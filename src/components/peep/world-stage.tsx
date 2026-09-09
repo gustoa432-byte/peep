@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { GameHud } from "@/components/peep/game-hud";
-import { TouchControls } from "@/components/peep/touch-controls";
+import { LookSurface, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE } from "@/lib/peep/constants";
 import { PeepGame } from "@/lib/peep/game";
@@ -87,13 +87,17 @@ export function WorldStage({
       />
 
       {hud.playing ? (
-        <TouchControls
-          onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
-          onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
-          onBreak={() => gameRef.current?.breakTarget()}
-          onPlace={() => gameRef.current?.placeTarget()}
-          onJump={() => gameRef.current?.jump()}
-        />
+        <>
+          <div className="pointer-events-none absolute inset-0 z-20 hidden max-md:block [@media(pointer:coarse)]:block">
+            <LookSurface onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)} />
+          </div>
+          <TouchControls
+            onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
+            onBreak={() => gameRef.current?.breakTarget()}
+            onPlace={() => gameRef.current?.placeTarget()}
+            onJump={() => gameRef.current?.jump()}
+          />
+        </>
       ) : null}
 
       {!hud.playing && !lost ? (
@@ -111,7 +115,7 @@ export function WorldStage({
               Войти в мир
             </Button>
             <p className="mt-3 text-center text-xs text-muted-on-ink md:hidden">
-              Слева — ходи. Справа сверху — смотри. Справа снизу — прыжок, ставить, ломать.
+              Слева внизу — ходи. Свайп по миру — смотри (резкий свайп крутит быстрее). Справа — прыжок, ставить, ломать.
             </p>
           </div>
         </div>

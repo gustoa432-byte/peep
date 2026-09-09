@@ -106,11 +106,11 @@ export function GameHud({
         className={cn(
           "pointer-events-auto absolute z-30 flex items-end gap-2",
           "bottom-3 left-1/2 -translate-x-1/2",
-          "[@media(pointer:coarse)]:max-md:bottom-[5.75rem]",
-          "[@media(pointer:coarse)]:landscape:bottom-2 [@media(pointer:coarse)]:landscape:left-2 [@media(pointer:coarse)]:landscape:translate-x-0",
+          "max-md:bottom-[9.75rem] max-md:left-3 max-md:translate-x-0",
+          "[@media(pointer:coarse)]:bottom-[9.75rem] [@media(pointer:coarse)]:left-3 [@media(pointer:coarse)]:translate-x-0",
         )}
       >
-        <div className="flex items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5">
+        <div className="flex flex-row items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5 max-md:flex-col [@media(pointer:coarse)]:flex-col">
           {hud.palette.map((block, i) => (
             <button
               key={block}
