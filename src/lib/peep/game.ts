@@ -429,8 +429,8 @@ ${clay}`,
   }
 
   placeTarget() {
-    if (!this.playing) return;
-    this.placeBlock();
+    if (!this.playing) return false;
+    return this.placeBlock();
   }
 
   jump() {
@@ -1042,17 +1042,18 @@ ${clay}`,
   }
 
   private placeBlock() {
-    if (!this.hit) return;
+    if (!this.hit) return false;
     const block = this.currentBlock();
-    if (block === AIR) return;
+    if (block === AIR) return false;
     const x = this.hit.x + this.hit.nx;
     const y = this.hit.y + this.hit.ny;
     const z = this.hit.z + this.hit.nz;
-    if (this.world.get(x, y, z) !== AIR) return;
-    if (this.overlapsPlayer(x, y, z)) return;
+    if (this.world.get(x, y, z) !== AIR) return false;
+    if (this.overlapsPlayer(x, y, z)) return false;
     this.applyLocal(x, y, z, block, true);
     this.audio.place(block);
     this.swing = 0.6;
+    return true;
   }
 
   private burst(x: number, y: number, z: number, block: number) {

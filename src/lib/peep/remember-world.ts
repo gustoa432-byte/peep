@@ -80,3 +80,25 @@ export function installTutorialHref(): string {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   return `/?install=1&platform=${ios ? "ios" : "android"}`;
 }
+
+const PLACE_HINT_KEY = "peep.placeHint.count";
+
+export function placedBlockCount(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const n = Number(localStorage.getItem(PLACE_HINT_KEY) ?? "0");
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function recordPlacedBlock(): number {
+  const next = placedBlockCount() + 1;
+  try {
+    localStorage.setItem(PLACE_HINT_KEY, String(next));
+  } catch {
+    /* quota / private mode */
+  }
+  return next;
+}
