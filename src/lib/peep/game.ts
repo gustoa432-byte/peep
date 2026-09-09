@@ -465,6 +465,11 @@ ${clay}`,
     this.moveZ = z;
   }
 
+  /** Touch look pad: same signs as mouse — drag right looks right, drag up looks up. */
+  lookBy(dx: number, dy: number) {
+    this.lookDelta(dx, dy);
+  }
+
   setSelected(i: number) {
     if (i < 0 || i >= HOTBAR_SLOTS) return;
     this.selected = i;
@@ -588,15 +593,16 @@ ${clay}`,
   private onPointerDown(e: PointerEvent) {
     if (!this.playing) return;
     if (e.button > 2) return;
+    // Phone/tablet: look and break/place live on the pads, not the canvas.
+    // A canvas drag here steals the right thumb and taps become accidental breaks.
+    if (e.pointerType === "touch") return;
     this.ptrButton = e.button;
     this.ptrStartX = e.clientX;
     this.ptrStartY = e.clientY;
     this.lastPtrX = e.clientX;
     this.lastPtrY = e.clientY;
     this.ptrMoved = false;
-    // A finger wobbles far more than a mouse: 6px would turn most taps into
-    // camera drags and swallow the tap-to-break.
-    this.tapSlop = e.pointerType === "touch" ? 14 : 6;
+    this.tapSlop = 6;
     if (this.pointerLocked) {
       if (e.button === 0) this.breakBlock();
       if (e.button === 2) this.placeBlock();

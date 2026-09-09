@@ -89,6 +89,7 @@ export function WorldStage({
       {hud.playing ? (
         <TouchControls
           onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
+          onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
           onBreak={() => gameRef.current?.breakTarget()}
           onPlace={() => gameRef.current?.placeTarget()}
           onJump={() => gameRef.current?.jump()}
@@ -110,7 +111,7 @@ export function WorldStage({
               Войти в мир
             </Button>
             <p className="mt-3 text-center text-xs text-muted-on-ink md:hidden">
-              Слева — джойстик, справа — взгляд и кнопки.
+              Слева — ходи. Справа сверху — смотри. Справа снизу — прыжок, ставить, ломать.
             </p>
           </div>
         </div>

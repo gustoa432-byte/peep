@@ -102,7 +102,14 @@ export function GameHud({
       </div>
 
       {/* Hotbar is the whole inventory (TZ §3.4). */}
-      <div className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-end gap-2">
+      <div
+        className={cn(
+          "pointer-events-auto absolute z-30 flex items-end gap-2",
+          "bottom-3 left-1/2 -translate-x-1/2",
+          "[@media(pointer:coarse)]:max-md:bottom-[5.75rem]",
+          "[@media(pointer:coarse)]:landscape:bottom-2 [@media(pointer:coarse)]:landscape:left-2 [@media(pointer:coarse)]:landscape:translate-x-0",
+        )}
+      >
         <div className="flex items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5 backdrop-blur-sm">
           {hud.palette.map((block, i) => (
             <button
@@ -113,6 +120,7 @@ export function GameHud({
               aria-pressed={hud.selected === i}
               className={cn(
                 "flex size-11 items-center justify-center rounded-xl border-2 transition-transform sm:size-12",
+                "[@media(pointer:coarse)]:size-10",
                 hud.selected === i
                   ? "scale-105 border-white/90 bg-white/15"
                   : "border-transparent bg-white/5 active:scale-95",
