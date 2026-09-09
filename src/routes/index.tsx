@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Smartphone, Trash2, X } from "lucide-react";
+import { Send, Smartphone, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getPlayerId, parseWorldId } from "@/lib/peep/player-id";
@@ -89,7 +89,8 @@ function Home() {
         <div className="pointer-events-none absolute bottom-24 left-[18%] size-20 rotate-6 bg-block-stone/25" />
       </div>
 
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center px-6 py-16">
+      <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-16">
+        <div className="flex flex-1 flex-col justify-center">
         <p className="font-display text-sm font-medium tracking-wide text-muted">voxel · together</p>
         <h1 className="mt-3 font-display text-6xl font-semibold leading-none tracking-tight md:text-7xl">
           Peep
@@ -228,6 +229,20 @@ function Home() {
             </li>
           ))}
         </ul>
+        </div>
+
+        <footer className="mt-14 border-t border-border pt-5 pb-10">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Контакты</p>
+          <a
+            href="https://t.me/peep_gm"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-fg hover:text-primary"
+          >
+            <Send className="size-4" strokeWidth={2} />
+            Telegram
+          </a>
+        </footer>
       </div>
     </main>
   );
