@@ -648,8 +648,8 @@ ${clay}`,
   /**
    * Pointer lock is a bonus, never a requirement: drag-to-look is the fallback
    * and it is the only path on touch. Every attempt therefore has to swallow
-   * both a synchronous throw and a rejected promise — inside an iframe (the
-   * Grok preview) the request raises WrongDocumentError, and without a real
+   * both a synchronous throw and a rejected promise — inside an iframe the
+   * request raises WrongDocumentError, and without a real
    * user gesture it rejects with NotAllowedError. An unhandled one of those is
    * a console error on every single session.
    */
