@@ -11,7 +11,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = process.cwd();
 
-process.env.HOST ??= "0.0.0.0";
+// Render's proxy only reaches the process on all interfaces. Always overwrite
+// HOST — some images set it to a hostname that binds loopback-only.
+process.env.HOST = "0.0.0.0";
+process.env.NITRO_HOST = "0.0.0.0";
 if (!process.env.PORT && !process.env.NITRO_PORT) {
   process.env.PORT = "8080";
 }

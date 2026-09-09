@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { WorldStage } from "@/components/peep/world-stage";
 import { Button } from "@/components/ui/button";
 import { WORLD_ID_RE } from "@/lib/peep/constants";
 import { getPlayerId } from "@/lib/peep/player-id";
@@ -8,7 +7,13 @@ import { rememberWorld } from "@/lib/peep/remember-world";
 import type { JoinResult } from "@/lib/peep/types";
 import { joinWorld } from "@/lib/peep/world.functions";
 
+const WorldStage = lazy(async () => {
+  const m = await import("@/components/peep/world-stage");
+  return { default: m.WorldStage };
+});
+
 export const Route = createFileRoute("/world/$worldId")({
+  ssr: false,
   component: WorldPage,
 });
 
@@ -72,15 +77,23 @@ function WorldPage() {
   }
 
   return (
-    <WorldStage
-      worldId={worldId}
-      seed={result.seed}
-      edits={result.edits}
-      cursor={result.cursor}
-      generation={result.generation}
-      isCreator={result.isCreator}
-      playerId={playerId}
-    />
+    <Suspense
+      fallback={
+        <main className="flex min-h-dvh items-center justify-center bg-bg-deep text-fg-on-ink">
+          <p className="font-display text-xl">Загружаем мир…</p>
+        </main>
+      }
+    >
+      <WorldStage
+        worldId={worldId}
+        seed={result.seed}
+        edits={result.edits}
+        cursor={result.cursor}
+        generation={result.generation}
+        isCreator={result.isCreator}
+        playerId={playerId}
+      />
+    </Suspense>
   );
 }
 
