@@ -48,7 +48,7 @@ export function GameHud({
         <Link
           to="/"
           aria-label="На главную"
-          className="flex min-h-11 min-w-11 flex-col justify-center rounded-lg bg-bg-deep/70 px-2.5 py-1.5 backdrop-blur-sm active:scale-95"
+          className="flex min-h-11 min-w-11 flex-col justify-center rounded-lg bg-bg-deep/70 px-2.5 py-1.5 active:scale-95"
         >
           <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
           <span className="mt-0.5 text-xs text-muted-on-ink">домой</span>
@@ -62,13 +62,13 @@ export function GameHud({
               type="button"
               onClick={() => setConfirmReset(true)}
               aria-label="Сбросить остров"
-              className="flex size-11 items-center justify-center rounded-lg bg-bg-deep/70 text-fg-on-ink backdrop-blur-sm active:scale-95"
+              className="flex size-11 items-center justify-center rounded-lg bg-bg-deep/70 text-fg-on-ink active:scale-95"
             >
               <RotateCcw className="size-4" strokeWidth={2.2} />
             </button>
           ) : null}
 
-          <div className="flex h-11 items-center gap-1.5 rounded-lg bg-bg-deep/70 px-2.5 text-xs text-muted-on-ink backdrop-blur-sm">
+          <div className="flex h-11 items-center gap-1.5 rounded-lg bg-bg-deep/70 px-2.5 text-xs text-muted-on-ink">
             <Users className="size-3.5" strokeWidth={2} />
             <span className="hidden sm:inline">
               {hud.peerCount < 2 ? "Один в мире" : hud.peerConnected ? "Вместе" : "Друг рядом"}
@@ -110,7 +110,7 @@ export function GameHud({
           "[@media(pointer:coarse)]:landscape:bottom-2 [@media(pointer:coarse)]:landscape:left-2 [@media(pointer:coarse)]:landscape:translate-x-0",
         )}
       >
-        <div className="flex items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5 backdrop-blur-sm">
+        <div className="flex items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5">
           {hud.palette.map((block, i) => (
             <button
               key={block}

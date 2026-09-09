@@ -85,7 +85,7 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
       {stick ? (
         <>
           <span
-            className="pointer-events-none fixed rounded-full border border-white/25 bg-black/20 backdrop-blur-[2px]"
+            className="pointer-events-none fixed rounded-full border border-white/25 bg-black/35"
             style={{
               width: BASE_R * 2,
               height: BASE_R * 2,
@@ -193,7 +193,7 @@ function ActionButton({
       aria-label={label}
       className={cn(
         "pointer-events-auto touch-none select-none rounded-full border border-white/25",
-        "bg-black/35 font-display text-[11px] font-semibold leading-none text-white backdrop-blur-sm",
+        "bg-black/45 font-display text-[11px] font-semibold leading-none text-white",
         "active:scale-95 active:bg-black/55",
         className,
       )}

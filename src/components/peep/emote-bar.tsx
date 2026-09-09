@@ -33,7 +33,7 @@ export function EmoteBar({
           }}
           className={cn(
             "flex size-11 items-center justify-center rounded-full",
-            "border border-white/25 bg-black/35 text-white backdrop-blur-sm",
+            "border border-white/25 bg-black/45 text-white",
             "active:scale-95 active:bg-black/55",
           )}
         >
