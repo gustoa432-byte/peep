@@ -1,0 +1,17 @@
+node_modules
+.node_modules.lock
+dist
+.vercel
+.tanstack
+.output
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+Thumbs.db
+screenshots
+artifacts
+*.log
+.pglite
+pglite.data
