@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #f3eee6;
+  --color-bg-deep: #1a1612;
+  --color-surface: #fffaf3;
+  --color-surface-ink: #241f1a;
+  --color-fg: #1a1612;
+  --color-fg-on-ink: #f3eee6;
+  --color-muted: #8a7e72;
+  --color-muted-on-ink: #c4b8ac;
+  --color-primary: #b85c38;
+  --color-primary-fg: #fffaf3;
+  --color-border: #d9cfc3;
+  --color-border-ink: #3a332c;
+  --color-block-grass: #5f7a53;
+  --color-block-dirt: #8a5a38;
+  --color-block-stone: #7a7670;
+  --color-block-wood: #b07a45;
+  --color-block-sand: #d2b27a;
+  --color-block-leaf: #3fa83c;
+  --color-danger: #a33b2a;
+  --font-display: "Syne", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --shadow-panel: 0 12px 40px rgb(26 22 18 / 0.14);
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01" on;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
