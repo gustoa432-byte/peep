@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { GameHud } from "@/components/peep/game-hud";
-import { LookSurface, TouchControls } from "@/components/peep/touch-controls";
+import { LookSurface, PlaceHint, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE } from "@/lib/peep/constants";
 import { PeepGame } from "@/lib/peep/game";
-import { markSessionDone } from "@/lib/peep/remember-world";
+import { markSessionDone, placedBlockCount, recordPlacedBlock } from "@/lib/peep/remember-world";
 import { leaveWorld, trackEvent } from "@/lib/peep/world.functions";
 import type { BlockEdit, HudState } from "@/lib/peep/types";
 
@@ -40,6 +40,7 @@ export function WorldStage({
   const gameRef = useRef<PeepGame | null>(null);
   const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, worldId, isCreator });
   const [lost, setLost] = useState(false);
+  const [placed, setPlaced] = useState(placedBlockCount);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,14 +90,20 @@ export function WorldStage({
       {hud.playing ? (
         <>
           <div className="pointer-events-none absolute inset-0 z-20 hidden max-md:block [@media(pointer:coarse)]:block">
-            <LookSurface onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)} />
+            <LookSurface
+              onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
+              onDoubleTap={() => {
+                if (!gameRef.current?.placeTarget()) return;
+                setPlaced(recordPlacedBlock());
+              }}
+            />
           </div>
           <TouchControls
             onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
             onBreak={() => gameRef.current?.breakTarget()}
-            onPlace={() => gameRef.current?.placeTarget()}
             onJump={() => gameRef.current?.jump()}
           />
+          <PlaceHint placed={placed} />
         </>
       ) : null}
 
@@ -115,7 +122,7 @@ export function WorldStage({
               Войти в мир
             </Button>
             <p className="mt-3 text-center text-xs text-muted-on-ink md:hidden">
-              Слева внизу — ходи. Свайп по миру — смотри (резкий свайп крутит быстрее). Справа — прыжок, ставить, ломать.
+              Слева внизу — ходи. Свайп по миру — смотри. Двойной тап — ставить. Справа — ломать и прыжок.
             </p>
           </div>
         </div>

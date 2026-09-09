@@ -110,7 +110,7 @@ export function GameHud({
           "[@media(pointer:coarse)]:bottom-[9.75rem] [@media(pointer:coarse)]:left-3 [@media(pointer:coarse)]:translate-x-0",
         )}
       >
-        <div className="flex flex-row items-end gap-1 rounded-2xl bg-bg-deep/70 p-1.5 max-md:flex-col [@media(pointer:coarse)]:flex-col">
+        <div className="flex flex-row items-end gap-1 rounded-2xl bg-bg-deep/5 p-1.5 max-md:flex-col [@media(pointer:coarse)]:flex-col">
           {hud.palette.map((block, i) => (
             <button
               key={block}
