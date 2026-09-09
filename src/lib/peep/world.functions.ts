@@ -138,8 +138,9 @@ export const createWorld = createServerFn({ method: "POST" })
         ]);
         await recordEvent(sql, "create", id, data.playerId);
         return { id, seed };
-      } catch {
-        /* unique collision — retry */
+      } catch (err) {
+        if ((err as { code?: string }).code === "23505") continue;
+        throw err;
       }
     }
     throw new Error("Could not create world");

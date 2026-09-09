@@ -4,7 +4,7 @@
  * Nitro's node-server listens on HOST + PORT; Render injects PORT only.
  */
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -19,17 +19,6 @@ if (!process.env.PORT && !process.env.NITRO_PORT) {
   process.env.PORT = "8080";
 }
 
-function stagePgliteAssets() {
-  const dist = join(root, "node_modules", "@electric-sql", "pglite", "dist");
-  const destDir = join(root, ".output", "server", "_libs");
-  mkdirSync(destDir, { recursive: true });
-  for (const name of ["pglite.data", "pglite.wasm", "initdb.wasm"]) {
-    const from = join(dist, name);
-    const to = join(destDir, name);
-    if (existsSync(from) && !existsSync(to)) copyFileSync(from, to);
-  }
-}
-
 if (process.env.DATABASE_URL?.trim()) {
   const migrated = spawnSync(process.execPath, [join(here, "migrate.mjs")], {
     stdio: "inherit",
@@ -37,9 +26,8 @@ if (process.env.DATABASE_URL?.trim()) {
   });
   if (migrated.status !== 0) process.exit(migrated.status ?? 1);
 } else {
-  stagePgliteAssets();
   console.log(
-    "[peep] No DATABASE_URL — in-memory world. Fine for a two-player test; gone after sleep or redeploy.",
+    "[peep] No DATABASE_URL — worlds live in process memory. Fine for a two-player test; gone after sleep or redeploy.",
   );
 }
 

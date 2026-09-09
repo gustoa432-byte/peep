@@ -37,7 +37,7 @@ Peep — долгоживущий Node-сервер, чтобы двое мог�
 - **Build Command:** `npm install && npm run build`
 - **Start Command:** `npm start`
 
-Node 22. `DATABASE_URL` не обязателен для проверки двоих на одном сервисе: мир живёт в памяти процесса и пропадает после сна или редеплоя.
+Node 22. Без `DATABASE_URL` миры живут в памяти процесса (двое на одном сервисе). После сна или редеплоя мир пропадает.
 
 Чтобы постройки переживали рестарт — Environment → `DATABASE_URL` (Postgres, например Neon), затем Manual Deploy.
 
