@@ -1,7 +1,8 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { createMemorySql } from "./memory-sql";
 
 /** Which database backend is active. */
-export type DbSource = "neon" | "pglite";
+export type DbSource = "neon" | "pglite" | "memory";
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
@@ -16,7 +17,9 @@ const databaseUrl =
  * the app has a working database even with nothing configured — the live preview
  * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
  */
-export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
+const useMemory = !databaseUrl && Boolean(process.env.RENDER);
+
+export const dbSource: DbSource = databaseUrl ? "neon" : useMemory ? "memory" : "pglite";
 
 /**
  * Minimal shared SQL surface, satisfied by both Neon and PGLite. Both the
@@ -175,7 +178,9 @@ async function createSql(): Promise<Sql> {
         "or a server route loader, never from client code.",
     );
   }
-  return dbSource === "neon" ? createNeonSql() : createPgliteSql();
+  if (dbSource === "neon") return createNeonSql();
+  if (dbSource === "memory") return Promise.resolve(createMemorySql());
+  return createPgliteSql();
 }
 
 /**
