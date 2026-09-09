@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 const BASE_R = 56;
 const KNOB_R = 28;
 const DEAD_ZONE = 8;
+const LOOK_GAIN = 1.15;
 
 /** Capture is best-effort: a pointer the browser no longer tracks throws. */
 function capture(el: Element, pointerId: number) {
@@ -24,9 +25,6 @@ type StickState = { id: number; cx: number; cy: number; kx: number; ky: number }
 function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
   const [stick, setStick] = useState<StickState | null>(null);
   const active = useRef<number | null>(null);
-  // The origin lives in a ref, not in state: a finger that lands and flicks in
-  // the same frame moves before React has committed, and reading state here
-  // would drop those first events on the floor.
   const origin = useRef<{ cx: number; cy: number } | null>(null);
 
   const release = useCallback(() => {
@@ -60,9 +58,11 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
 
   return (
     <div
-      className="pointer-events-auto absolute bottom-0 left-0 z-20 h-[58%] w-[46%] touch-none"
+      className="pointer-events-auto absolute bottom-[9.25rem] left-0 z-20 h-[40%] w-[42%] touch-none landscape:bottom-16 landscape:h-[42%]"
       onPointerDown={(e) => {
         if (active.current !== null) return;
+        e.preventDefault();
+        e.stopPropagation();
         active.current = e.pointerId;
         capture(e.currentTarget, e.pointerId);
         origin.current = { cx: e.clientX, cy: e.clientY };
@@ -103,6 +103,61 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
             }}
           />
         </>
+      ) : (
+        <span className="pointer-events-none absolute bottom-6 left-6 text-[11px] tracking-wide text-white/45">
+          Ходи
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Right-thumb look: drag, not a velocity stick. Same signs as mouse-look.
+ */
+function LookPad({ onLook }: { onLook: (dx: number, dy: number) => void }) {
+  const active = useRef<number | null>(null);
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const [hint, setHint] = useState(true);
+
+  const release = () => {
+    active.current = null;
+    last.current = null;
+  };
+
+  return (
+    <div
+      className="pointer-events-auto absolute top-[4.5rem] right-0 z-20 h-[52%] w-[46%] touch-none landscape:top-14 landscape:h-[40%]"
+      onPointerDown={(e) => {
+        if (active.current !== null) return;
+        e.preventDefault();
+        e.stopPropagation();
+        active.current = e.pointerId;
+        last.current = { x: e.clientX, y: e.clientY };
+        setHint(false);
+        capture(e.currentTarget, e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        if (active.current !== e.pointerId || !last.current) return;
+        const dx = e.clientX - last.current.x;
+        const dy = e.clientY - last.current.y;
+        last.current = { x: e.clientX, y: e.clientY };
+        onLook(dx * LOOK_GAIN, dy * LOOK_GAIN);
+      }}
+      onPointerUp={(e) => {
+        if (active.current !== e.pointerId) return;
+        release();
+      }}
+      onPointerCancel={(e) => {
+        if (active.current !== e.pointerId) return;
+        release();
+      }}
+      aria-label="Взгляд"
+    >
+      {hint ? (
+        <span className="pointer-events-none absolute top-1/3 right-6 text-[11px] tracking-wide text-white/45">
+          Смотри
+        </span>
       ) : null}
     </div>
   );
@@ -138,12 +193,13 @@ function ActionButton({
       aria-label={label}
       className={cn(
         "pointer-events-auto touch-none select-none rounded-full border border-white/25",
-        "bg-black/35 font-display text-sm font-semibold text-white backdrop-blur-sm",
+        "bg-black/35 font-display text-[11px] font-semibold leading-none text-white backdrop-blur-sm",
         "active:scale-95 active:bg-black/55",
         className,
       )}
       onPointerDown={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         capture(e.currentTarget, e.pointerId);
         onFire();
         if (repeatMs) {
@@ -153,7 +209,6 @@ function ActionButton({
       }}
       onPointerUp={stop}
       onPointerCancel={stop}
-      onPointerLeave={stop}
     >
       {label}
     </button>
@@ -162,28 +217,31 @@ function ActionButton({
 
 export function TouchControls({
   onAxis,
+  onLook,
   onBreak,
   onPlace,
   onJump,
 }: {
   onAxis: (x: number, z: number) => void;
+  onLook: (dx: number, dy: number) => void;
   onBreak: () => void;
   onPlace: () => void;
   onJump: () => void;
 }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-20 md:hidden">
+    <div className="pointer-events-none absolute inset-0 z-40 hidden max-md:block [@media(pointer:coarse)]:block">
       <MoveStick onAxis={onAxis} />
+      <LookPad onLook={onLook} />
 
       <div
-        className="pointer-events-none absolute right-3 bottom-0 z-20 flex items-end gap-2"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 5.5rem)" }}
+        className="pointer-events-none absolute right-2 z-40 flex items-end gap-2"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
-        <div className="flex flex-col items-end gap-3">
-          <ActionButton label="Прыжок" onFire={onJump} className="size-16" />
-          <div className="flex items-end gap-3">
-            <ActionButton label="Ставить" onFire={onPlace} repeatMs={260} className="size-16" />
-            <ActionButton label="Ломать" onFire={onBreak} repeatMs={220} className="size-20" />
+        <div className="flex flex-col items-end gap-2.5">
+          <ActionButton label="Прыжок" onFire={onJump} className="size-14" />
+          <div className="flex items-end gap-2.5">
+            <ActionButton label="Ставить" onFire={onPlace} repeatMs={260} className="size-14" />
+            <ActionButton label="Ломать" onFire={onBreak} repeatMs={220} className="size-[4.25rem]" />
           </div>
         </div>
       </div>
