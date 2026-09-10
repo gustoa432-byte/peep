@@ -128,7 +128,21 @@ export function GameHud({
       </div>
 
       <div className="absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-        <div className="size-3">
+        <svg viewBox="0 0 36 36" className="size-9 -rotate-90" aria-hidden>
+          {hud.placeCharge > 0 ? (
+            <circle
+              cx="18"
+              cy="18"
+              r="14"
+              fill="none"
+              className="stroke-primary"
+              strokeWidth="2.5"
+              strokeDasharray={2 * Math.PI * 14}
+              strokeDashoffset={2 * Math.PI * 14 * (1 - hud.placeCharge)}
+            />
+          ) : null}
+        </svg>
+        <div className="absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2">
           <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-fg-on-ink" />
           <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-fg-on-ink" />
         </div>
@@ -178,7 +192,7 @@ export function GameHud({
       </div>
 
       <p className="absolute bottom-20 left-1/2 hidden -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80 md:block [@media(pointer:coarse)]:hidden">
-        WASD · мышь · пробел · ЛКМ ломать · ПКМ ставить · 1–6 · E/R/T
+        WASD · мышь · пробел · зажать ЛКМ ломать · зажать ПКМ ставить · 1–6 · E/R/T
       </p>
 
       {qrOpen ? (

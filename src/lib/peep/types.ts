@@ -23,6 +23,10 @@ export type HudState = {
   playing: boolean;
   worldId: string;
   isCreator: boolean;
+  /** 0–1 while holding to place; 0 otherwise. */
+  placeCharge: number;
+  /** 0–1 while holding the break control; 0 otherwise. */
+  breakCharge: number;
 };
 
 export type NetPos = {

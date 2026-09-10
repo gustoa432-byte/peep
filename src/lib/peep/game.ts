@@ -16,6 +16,7 @@ import {
   AIR,
   BLOCK_COLORS,
   BLOCK_PALETTE,
+  BREAK_HOLD_S,
   CHUNK_S,
   EYE_HEIGHT,
   FOG_COLOR,
@@ -24,6 +25,7 @@ import {
   GRAVITY,
   HOTBAR_SLOTS,
   JUMP_SPEED,
+  PLACE_HOLD_S,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
   WALK_SPEED,
@@ -32,14 +34,15 @@ import {
   WORLD_SY,
   WORLD_SZ,
 } from "./constants";
+import { createAtmosphere, disposeAtmosphere, setUnderwater, tickAtmosphere, SUN_DIR, type Atmosphere } from "./atmosphere";
 import {
-  createAtmosphere,
-  disposeAtmosphere,
-  setUnderwater,
-  tickAtmosphere,
-  SUN_DIR,
-  type Atmosphere,
-} from "./atmosphere";
+  createBreakCracks,
+  createPlaceGhost,
+  disposeBreakCracks,
+  disposePlaceGhost,
+  type BreakCracks,
+  type PlaceGhost,
+} from "./build-fx";
 import { buildChunkGeometry, chunkCountX, chunkCountZ } from "./mesh";
 import { voxelRaycast, type VoxelHit } from "./raycast";
 import type { BlockEdit, EmoteKind, HudState, NetMsg, PresencePlayer } from "./types";
@@ -118,6 +121,7 @@ export type PeepGameOptions = {
   playerId: string;
   onHud: (hud: HudState) => void;
   onLost: () => void;
+  onPlaced?: () => void;
 };
 
 const LOOK_SENS = 0.0022;
@@ -169,6 +173,8 @@ export class PeepGame {
   private readonly atmo: Atmosphere;
   private readonly fog: THREE.Fog;
   private readonly highlight: THREE.LineSegments;
+  private readonly placeGhost: PlaceGhost;
+  private readonly breakFx: BreakCracks;
   private readonly pickaxe: THREE.Group;
   private readonly localArm: THREE.Group;
   private readonly grainMesh: THREE.Mesh;
@@ -204,6 +210,14 @@ export class PeepGame {
   private selected = 0;
   private hit: VoxelHit | null = null;
   private swing = 0;
+  private placing = false;
+  private mining = false;
+  private placeT = 0;
+  private breakT = 0;
+  private placeCharge = 0;
+  private breakCharge = 0;
+  private placeKey = "";
+  private breakKey = "";
   private bob = 0;
   private peerConnected = false;
   private peerCount = 1;
@@ -353,6 +367,11 @@ ${clay}`,
     this.highlight.visible = false;
     this.scene.add(this.highlight);
 
+    this.placeGhost = createPlaceGhost();
+    this.scene.add(this.placeGhost.mesh);
+    this.breakFx = createBreakCracks();
+    this.scene.add(this.breakFx.group);
+
     this.pickaxe = createPickaxe();
     this.localArm = createLocalArm();
     const grain = createFilmGrain();
@@ -423,14 +442,47 @@ ${clay}`,
     this.hudDirty = true;
   }
 
-  breakTarget() {
+  beginPlace() {
     if (!this.playing) return;
-    this.breakBlock();
+    this.placing = true;
+    this.placeT = 0;
+    this.placeCharge = 0;
+    this.placeKey = "";
+    this.hudDirty = true;
+  }
+
+  endPlace() {
+    this.placing = false;
+    this.placeT = 0;
+    if (this.placeCharge !== 0) this.hudDirty = true;
+    this.placeCharge = 0;
+    this.placeGhost.mesh.visible = false;
+  }
+
+  beginBreak() {
+    if (!this.playing) return;
+    this.mining = true;
+    this.breakT = 0;
+    this.breakCharge = 0;
+    this.breakKey = "";
+    this.hudDirty = true;
+  }
+
+  endBreak() {
+    this.mining = false;
+    this.breakT = 0;
+    if (this.breakCharge !== 0) this.hudDirty = true;
+    this.breakCharge = 0;
+    this.breakFx.group.visible = false;
+  }
+
+  breakTarget() {
+    this.beginBreak();
   }
 
   placeTarget() {
-    if (!this.playing) return false;
-    return this.placeBlock();
+    this.beginPlace();
+    return false;
   }
 
   jump() {
@@ -491,6 +543,8 @@ ${clay}`,
     disposeAtmosphere(this.atmo);
     this.highlight.geometry.dispose();
     (this.highlight.material as THREE.Material).dispose();
+    disposePlaceGhost(this.placeGhost);
+    disposeBreakCracks(this.breakFx);
     this.renderer.dispose();
     this.resizeObs?.disconnect();
     if (window.__controlsTest) delete window.__controlsTest;
@@ -566,10 +620,10 @@ ${clay}`,
   private onBlur() {
     this.keys.clear();
     this.dragging = false;
-    // A backgrounded tab never delivers pointerup for the stick: releasing the
-    // axis here stops the player walking into the sea while the phone is away.
     this.moveX = 0;
     this.moveZ = 0;
+    this.endPlace();
+    this.endBreak();
   }
 
   private onLock() {
@@ -604,11 +658,13 @@ ${clay}`,
     this.ptrMoved = false;
     this.tapSlop = 6;
     if (this.pointerLocked) {
-      if (e.button === 0) this.breakBlock();
-      if (e.button === 2) this.placeBlock();
+      if (e.button === 0) this.beginBreak();
+      if (e.button === 2) this.beginPlace();
       return;
     }
     this.dragging = true;
+    if (e.button === 0) this.beginBreak();
+    if (e.button === 2) this.beginPlace();
     try {
       this.opts.canvas.setPointerCapture(e.pointerId);
     } catch {
@@ -624,20 +680,25 @@ ${clay}`,
     this.lastPtrY = e.clientY;
     if (Math.hypot(e.clientX - this.ptrStartX, e.clientY - this.ptrStartY) > this.tapSlop) {
       this.ptrMoved = true;
+      this.endPlace();
+      this.endBreak();
     }
     this.lookDelta(dx, dy);
   }
 
   private onPointerUp(e: PointerEvent) {
+    if (this.pointerLocked) {
+      if (e.button === 0) this.endBreak();
+      if (e.button === 2) this.endPlace();
+    }
     if (!this.dragging) {
       this.dragging = false;
       return;
     }
     this.dragging = false;
-    if (this.pointerLocked || !this.playing) return;
-    if (this.ptrMoved) return;
-    if (this.ptrButton === 0) this.breakBlock();
-    if (this.ptrButton === 2) this.placeBlock();
+    if (!this.playing) return;
+    this.endPlace();
+    this.endBreak();
     void e;
   }
 
@@ -776,6 +837,7 @@ ${clay}`,
     this.grainTime.value = this.anim;
     this.audio.tickAmbient(dt);
     this.updateHighlight();
+    this.updateBuild(dt);
     this.netTick(now);
     this.flushDirty();
     if (this.hudDirty) this.emitHud();
@@ -961,6 +1023,108 @@ ${clay}`,
     }
     this.highlight.visible = true;
     this.highlight.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+  }
+
+  private placeSpot(): { x: number; y: number; z: number; block: number; ok: boolean } | null {
+    if (!this.hit) return null;
+    const block = this.currentBlock();
+    if (block === AIR) return null;
+    const x = this.hit.x + this.hit.nx;
+    const y = this.hit.y + this.hit.ny;
+    const z = this.hit.z + this.hit.nz;
+    const occupied = this.world.get(x, y, z) !== AIR;
+    const inside = this.overlapsPlayer(x, y, z);
+    return { x, y, z, block, ok: !occupied && !inside };
+  }
+
+  private updateBuild(dt: number) {
+    this.updatePlaceHold(dt);
+    this.updateBreakHold(dt);
+  }
+
+  private updatePlaceHold(dt: number) {
+    const spot = this.placing ? this.placeSpot() : null;
+    if (!this.placing || !spot) {
+      this.placeGhost.mesh.visible = false;
+      if (this.placeCharge !== 0) {
+        this.placeCharge = 0;
+        this.placeT = 0;
+        this.hudDirty = true;
+      }
+      return;
+    }
+    const key = `${spot.x},${spot.y},${spot.z},${spot.block}`;
+    if (key !== this.placeKey) {
+      this.placeKey = key;
+      this.placeT = 0;
+    }
+    this.placeGhost.mesh.visible = true;
+    this.placeGhost.mesh.position.set(spot.x + 0.5, spot.y + 0.5, spot.z + 0.5);
+    const color = BLOCK_COLORS[spot.block] ?? 0x888888;
+    this.placeGhost.mat.color.setHex(spot.ok ? color : 0xa33b2a);
+    const grow = 0.82 + 0.18 * this.placeCharge;
+    this.placeGhost.mesh.scale.setScalar(spot.ok ? grow : 0.92);
+    this.placeGhost.mat.opacity = spot.ok ? 0.2 + 0.28 * this.placeCharge : 0.22;
+    if (!spot.ok) {
+      if (this.placeCharge !== 0) {
+        this.placeT = 0;
+        this.placeCharge = 0;
+        this.hudDirty = true;
+      }
+      return;
+    }
+    this.placeT += dt;
+    const next = Math.min(1, this.placeT / PLACE_HOLD_S);
+    if (next !== this.placeCharge) {
+      this.placeCharge = next;
+      this.hudDirty = true;
+    }
+    if (this.placeT >= PLACE_HOLD_S) {
+      if (this.placeBlock()) this.opts.onPlaced?.();
+      this.placeT = 0;
+      this.placeCharge = 0;
+      this.placeKey = "";
+      this.hudDirty = true;
+    }
+  }
+
+  private updateBreakHold(dt: number) {
+    if (!this.mining || !this.hit) {
+      this.breakFx.group.visible = false;
+      if (this.breakCharge !== 0) {
+        this.breakCharge = 0;
+        this.breakT = 0;
+        this.hudDirty = true;
+      }
+      return;
+    }
+    const key = `${this.hit.x},${this.hit.y},${this.hit.z}`;
+    if (key !== this.breakKey) {
+      this.breakKey = key;
+      this.breakT = 0;
+    }
+    this.breakT += dt;
+    const next = Math.min(1, this.breakT / BREAK_HOLD_S);
+    if (next !== this.breakCharge) {
+      this.breakCharge = next;
+      this.hudDirty = true;
+    }
+    this.breakFx.group.visible = true;
+    this.breakFx.group.position.set(this.hit.x + 0.5, this.hit.y + 0.5, this.hit.z + 0.5);
+    const veilMat = this.breakFx.veil.material as THREE.MeshBasicMaterial;
+    veilMat.opacity = 0.08 + next * 0.38;
+    const shown = Math.max(1, Math.floor(next * this.breakFx.segmentCount));
+    this.breakFx.lines.geometry.setDrawRange(0, shown * 2);
+    (this.breakFx.lines.material as THREE.LineBasicMaterial).opacity = 0.55 + next * 0.45;
+    this.swing = Math.max(this.swing, next * 0.55);
+    if (this.breakT >= BREAK_HOLD_S) {
+      this.breakBlock();
+      this.breakT = 0;
+      this.breakCharge = 0;
+      this.breakKey = "";
+      this.breakFx.group.visible = false;
+      this.hudDirty = true;
+    }
   }
 
   private updatePickaxe(dt: number) {
@@ -1377,6 +1541,8 @@ ${clay}`,
       playing: this.playing,
       worldId: this.opts.worldId,
       isCreator: this.opts.isCreator,
+      placeCharge: this.placeCharge,
+      breakCharge: this.breakCharge,
     });
   }
 

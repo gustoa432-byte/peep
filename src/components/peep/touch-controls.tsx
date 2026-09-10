@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useRef, useState } from "react";
 import { IconJump, IconPick } from "@/components/peep/peep-icons";
 import type { OrientMode } from "@/lib/peep/settings";
 import { cn } from "@/lib/utils";
@@ -9,14 +9,7 @@ const KNOB_R = 22;
 const KNOB_R_LAND = 18;
 const DEAD_ZONE = 8;
 
-const TAP_MOVE = 16;
-const TAP_DIST = 18;
-const TAP_MS = 220;
-const DOUBLE_MS = 280;
-const DOUBLE_DIST = 40;
-
-/** Hold time before a break fires — keeps a jump tap from mining. */
-const BREAK_CHARGE_MS = 620;
+const LOOK_SLOP = 16;
 
 function capture(el: Element, pointerId: number) {
   try {
@@ -28,21 +21,23 @@ function capture(el: Element, pointerId: number) {
 
 export function LookSurface({
   onLook,
-  onDoubleTap,
+  onHoldStart,
+  onHoldEnd,
 }: {
   onLook: (dx: number, dy: number) => void;
-  onDoubleTap?: () => void;
+  onHoldStart?: () => void;
+  onHoldEnd?: () => void;
 }) {
   const active = useRef<number | null>(null);
   const last = useRef<{ x: number; y: number; t: number } | null>(null);
-  const start = useRef<{ x: number; y: number; t: number } | null>(null);
-  const traveled = useRef(0);
-  const prevTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const looking = useRef(false);
 
   const release = () => {
     active.current = null;
     last.current = null;
     start.current = null;
+    looking.current = false;
   };
 
   return (
@@ -54,18 +49,24 @@ export function LookSurface({
         active.current = e.pointerId;
         const now = performance.now();
         last.current = { x: e.clientX, y: e.clientY, t: now };
-        start.current = { x: e.clientX, y: e.clientY, t: now };
-        traveled.current = 0;
+        start.current = { x: e.clientX, y: e.clientY };
+        looking.current = false;
         capture(e.currentTarget, e.pointerId);
+        onHoldStart?.();
       }}
       onPointerMove={(e) => {
-        if (active.current !== e.pointerId || !last.current) return;
+        if (active.current !== e.pointerId || !last.current || !start.current) return;
         const now = performance.now();
         const dx = e.clientX - last.current.x;
         const dy = e.clientY - last.current.y;
         const dt = Math.max(4, now - last.current.t);
         last.current = { x: e.clientX, y: e.clientY, t: now };
-        traveled.current += Math.hypot(dx, dy);
+        const fromStart = Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y);
+        if (!looking.current && fromStart > LOOK_SLOP) {
+          looking.current = true;
+          onHoldEnd?.();
+        }
+        if (!looking.current) return;
         const speed = Math.hypot(dx, dy) / dt;
         const extra = Math.max(0, speed - 0.35);
         const gain = Math.min(3.8, 1 + extra ** 1.65 * 0.9);
@@ -73,33 +74,14 @@ export function LookSurface({
       }}
       onPointerUp={(e) => {
         if (active.current !== e.pointerId) return;
-        const from = start.current;
-        const now = performance.now();
+        const wasLooking = looking.current;
         release();
-        if (!from || !onDoubleTap) return;
-        const duration = now - from.t;
-        const dist = Math.hypot(e.clientX - from.x, e.clientY - from.y);
-        const isTap = traveled.current < TAP_MOVE && dist < TAP_DIST && duration < TAP_MS;
-        if (!isTap) {
-          prevTap.current = null;
-          return;
-        }
-        const prev = prevTap.current;
-        if (
-          prev &&
-          now - prev.t < DOUBLE_MS &&
-          Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < DOUBLE_DIST
-        ) {
-          prevTap.current = null;
-          onDoubleTap();
-          return;
-        }
-        prevTap.current = { t: now, x: e.clientX, y: e.clientY };
+        if (!wasLooking) onHoldEnd?.();
       }}
       onPointerCancel={(e) => {
         if (active.current !== e.pointerId) return;
         release();
-        prevTap.current = null;
+        onHoldEnd?.();
       }}
       aria-label="Взгляд"
     />
@@ -238,36 +220,18 @@ function ActionButton({
   );
 }
 
-function BreakSpell({ onBreak, className }: { onBreak: () => void; className?: string }) {
-  const [charge, setCharge] = useState(0);
-  const holding = useRef(false);
-  const start = useRef(0);
-  const raf = useRef(0);
-  const onBreakRef = useRef(onBreak);
-  onBreakRef.current = onBreak;
-
-  const stop = useCallback(() => {
-    holding.current = false;
-    cancelAnimationFrame(raf.current);
-    setCharge(0);
-  }, []);
-
-  useEffect(() => () => cancelAnimationFrame(raf.current), []);
-
-  const tick = (now: number) => {
-    if (!holding.current) return;
-    const t = Math.min(1, (now - start.current) / BREAK_CHARGE_MS);
-    setCharge(t);
-    if (t >= 1) {
-      onBreakRef.current();
-      start.current = now;
-      setCharge(0);
-    }
-    raf.current = requestAnimationFrame(tick);
-  };
-
+function BreakSpell({
+  charge,
+  onHold,
+  onRelease,
+  className,
+}: {
+  charge: number;
+  onHold: () => void;
+  onRelease: () => void;
+  className?: string;
+}) {
   const c = 2 * Math.PI * 26;
-
   return (
     <button
       type="button"
@@ -282,24 +246,13 @@ function BreakSpell({ onBreak, className }: { onBreak: () => void; className?: s
         e.preventDefault();
         e.stopPropagation();
         capture(e.currentTarget, e.pointerId);
-        holding.current = true;
-        start.current = performance.now();
-        setCharge(0);
-        cancelAnimationFrame(raf.current);
-        raf.current = requestAnimationFrame(tick);
+        onHold();
       }}
-      onPointerUp={stop}
-      onPointerCancel={stop}
+      onPointerUp={onRelease}
+      onPointerCancel={onRelease}
     >
       <svg viewBox="0 0 56 56" className="pointer-events-none absolute inset-0 size-full -rotate-90" aria-hidden>
-        <circle
-          cx="28"
-          cy="28"
-          r="26"
-          fill="none"
-          className="stroke-fg-on-ink/20"
-          strokeWidth="3"
-        />
+        <circle cx="28" cy="28" r="26" fill="none" className="stroke-fg-on-ink/20" strokeWidth="3" />
         <circle
           cx="28"
           cy="28"
@@ -318,13 +271,17 @@ function BreakSpell({ onBreak, className }: { onBreak: () => void; className?: s
 
 export function TouchControls({
   onAxis,
-  onBreak,
+  onBreakHold,
+  onBreakRelease,
+  breakCharge,
   onJump,
   orient,
   force,
 }: {
   onAxis: (x: number, z: number) => void;
-  onBreak: () => void;
+  onBreakHold: () => void;
+  onBreakRelease: () => void;
+  breakCharge: number;
   onJump: () => void;
   orient: OrientMode;
   force?: boolean;
@@ -348,7 +305,12 @@ export function TouchControls({
             : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
         }}
       >
-        <BreakSpell onBreak={onBreak} className={land ? "size-14" : "size-14"} />
+        <BreakSpell
+          charge={breakCharge}
+          onHold={onBreakHold}
+          onRelease={onBreakRelease}
+          className={land ? "size-14" : "size-14"}
+        />
         <ActionButton label="Прыжок" onFire={onJump} className={land ? "size-16" : "size-[4.25rem]"}>
           <IconJump className={land ? "size-7" : "size-8"} />
         </ActionButton>
@@ -383,7 +345,7 @@ export function PlaceHint({
         opacity,
       }}
     >
-      двойной клик по экрану  поставить блок
+      зажми экран  поставить блок
     </p>
   );
 }
