@@ -25,6 +25,7 @@ import {
   GRAVITY,
   HOTBAR_SLOTS,
   JUMP_SPEED,
+  PLACE_DOUBLE_MS,
   PLACE_HOLD_S,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
@@ -45,6 +46,7 @@ import {
 } from "./build-fx";
 import { buildChunkGeometry, chunkCountX, chunkCountZ } from "./mesh";
 import { voxelRaycast, type VoxelHit } from "./raycast";
+import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./textures";
 import type { BlockEdit, EmoteKind, HudState, NetMsg, PresencePlayer } from "./types";
 import { EMOTE_DURATION } from "./types";
 import { VoxelWorld } from "./world";
@@ -149,7 +151,7 @@ function createFilmGrain(): { mesh: THREE.Mesh; time: { value: number } } {
         float n = fract(sin(dot(uv + t * 113.0, vec2(12.9898, 78.233))) * 43758.5453);
         float n2 = fract(sin(dot(uv * 0.27 - t * 47.0, vec2(39.346, 11.135))) * 23421.63);
         float g = (n * 0.7 + n2 * 0.3) - 0.5;
-        gl_FragColor = vec4(vec3(0.62 + g * 0.9), 0.078);
+        gl_FragColor = vec4(vec3(0.62 + g * 0.9), 0.04);
       }
     `,
   });
@@ -170,6 +172,7 @@ export class PeepGame {
   private readonly terrain = new THREE.Group();
   private readonly chunkMeshes = new Map<string, THREE.Mesh>();
   private readonly material: THREE.MeshLambertMaterial;
+  private readonly atlas: THREE.DataTexture;
   private readonly atmo: Atmosphere;
   private readonly fog: THREE.Fog;
   private readonly highlight: THREE.LineSegments;
@@ -211,6 +214,8 @@ export class PeepGame {
   private hit: VoxelHit | null = null;
   private swing = 0;
   private placing = false;
+  private placeArmed = false;
+  private placeArmedUntil = 0;
   private mining = false;
   private placeT = 0;
   private breakT = 0;
@@ -218,6 +223,8 @@ export class PeepGame {
   private breakCharge = 0;
   private placeKey = "";
   private breakKey = "";
+  private strikeT = 0;
+  private placeTickT = 0;
   private bob = 0;
   private peerConnected = false;
   private peerCount = 1;
@@ -258,13 +265,15 @@ export class PeepGame {
     this.yaw = Math.atan2(-SUN_DIR.x, -SUN_DIR.z);
     this.pitch = -0.28;
 
+    this.atlas = createBlockAtlas();
     this.material = new THREE.MeshLambertMaterial({
       vertexColors: true,
       color: 0xffffff,
     });
-    this.material.customProgramCacheKey = () => "peep-clay-v9";
+    this.material.customProgramCacheKey = () => "peep-atlas-v1";
     this.material.onBeforeCompile = (shader) => {
       shader.uniforms.uPeepTime = this.grainTime;
+      shader.uniforms.uAtlas = { value: this.atlas };
       shader.vertexShader = `attribute float peepKind;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.vertexShader}`
         .replace(
           "#include <beginnormal_vertex>",
@@ -277,53 +286,39 @@ vKind = peepKind;`,
           `#include <worldpos_vertex>
 vPeepW = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
         );
-      const clay = `
-float kind = floor(vKind + 0.1);
-float grass = step(0.5, kind) * (1.0 - step(1.5, kind));
-float dirt = step(1.5, kind) * (1.0 - step(2.5, kind));
-float stone = step(2.5, kind) * (1.0 - step(3.5, kind));
-float wood = step(3.5, kind) * (1.0 - step(4.5, kind));
-float sand = step(4.5, kind) * (1.0 - step(5.5, kind));
-float leaf = step(5.5, kind) * (1.0 - step(6.5, kind));
-float nSoft = fract(sin(dot(vPeepW * 0.37, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-float nFine = fract(sin(dot(vPeepW * 1.05, vec3(91.13, 17.42, 53.1))) * 9123.12);
-float top = smoothstep(0.55, 0.95, vPeepN.y);
-float bot = smoothstep(0.55, 0.95, -vPeepN.y);
-float side = 1.0 - top - bot;
-float fy = fract(vPeepW.y);
-diffuseColor.rgb += grass * top * (nSoft - 0.5) * vec3(0.035, 0.055, 0.018);
-float rim = smoothstep(0.64, 0.88, fy);
-vec3 soil = vec3(0.46, 0.29, 0.16);
-vec3 sod = vec3(0.30, 0.64, 0.23);
-diffuseColor.rgb = mix(diffuseColor.rgb, mix(soil, sod, rim), grass * side);
-diffuseColor.rgb = mix(diffuseColor.rgb, soil * (0.94 + nSoft * 0.06), grass * bot);
-diffuseColor.rgb += dirt * (nSoft - 0.5) * vec3(0.05, 0.025, 0.012);
-float stoneHard = (nFine - 0.5) * 0.06;
-diffuseColor.rgb += stone * stoneHard * vec3(0.05, 0.06, 0.08);
-diffuseColor.rgb *= 1.0 - stone * 0.04;
-vec2 mid = fract(vPeepW.xz) - 0.5;
-float rings = sin(length(mid) * 34.0 + nSoft * 2.0);
-float fiberAxis = abs(vPeepN.x) > 0.5 ? vPeepW.z : vPeepW.x;
-float fiber = sin(fiberAxis * 22.0 + vPeepW.y * 0.35);
-diffuseColor.rgb *= 1.0 - wood * (top + bot) * rings * 0.18;
-diffuseColor.rgb *= 1.0 - wood * side * fiber * 0.12;
-diffuseColor.rgb += wood * (top + bot) * vec3(0.05, 0.025, 0.008);
-diffuseColor.rgb += sand * (nSoft - 0.5) * vec3(0.04, 0.032, 0.012);
-diffuseColor.rgb += leaf * (nSoft - 0.5) * vec3(0.04, 0.08, 0.02);
-float film = fract(sin(dot(gl_FragCoord.xy + fract(uPeepTime * 19.13) * 97.0, vec2(12.9898, 78.233))) * 43758.5453);
-diffuseColor.rgb += (film - 0.5) * 0.02;
-`;
-      shader.fragmentShader = `uniform float uPeepTime;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.fragmentShader}`
-        .replace(
+      shader.fragmentShader = `uniform float uPeepTime;\nuniform sampler2D uAtlas;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.fragmentShader}`;
+      if (shader.fragmentShader.includes("#include <color_fragment>")) {
+        shader.fragmentShader = shader.fragmentShader.replace(
           "#include <color_fragment>",
           `#include <color_fragment>
-${clay}`,
-        )
-        .replace(
+${BLOCK_TEXEL_GLSL}`,
+        );
+      } else {
+        shader.fragmentShader = shader.fragmentShader.replace(
           "diffuseColor *= vColor;",
           `diffuseColor *= vColor;
-${clay}`,
+${BLOCK_TEXEL_GLSL}`,
         );
+      }
+      if (shader.fragmentShader.includes("#include <opaque_fragment>")) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <opaque_fragment>",
+          `${BLOCK_SHADE_GRAIN_GLSL}
+#include <opaque_fragment>`,
+        );
+      } else if (shader.fragmentShader.includes("#include <output_fragment>")) {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "#include <output_fragment>",
+          `${BLOCK_SHADE_GRAIN_GLSL}
+#include <output_fragment>`,
+        );
+      } else {
+        shader.fragmentShader = shader.fragmentShader.replace(
+          "gl_FragColor = vec4( outgoingLight, diffuseColor.a );",
+          `${BLOCK_SHADE_GRAIN_GLSL}
+gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
+        );
+      }
     };
 
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.08, 220);
@@ -442,21 +437,45 @@ ${clay}`,
     this.hudDirty = true;
   }
 
+  armPlace() {
+    if (!this.playing) return;
+    this.placeArmed = true;
+    this.placeArmedUntil = performance.now() + PLACE_DOUBLE_MS;
+    this.placing = false;
+    this.placeT = 0;
+    this.placeCharge = 0;
+    this.hudDirty = true;
+    this.audio.intent();
+  }
+
   beginPlace() {
     if (!this.playing) return;
+    this.placeArmed = false;
     this.placing = true;
     this.placeT = 0;
     this.placeCharge = 0;
     this.placeKey = "";
+    this.placeTickT = 0;
     this.hudDirty = true;
+    this.audio.placeTick(this.currentBlock());
+    this.swing = 0.45;
   }
 
   endPlace() {
     this.placing = false;
+    this.placeArmed = false;
     this.placeT = 0;
     if (this.placeCharge !== 0) this.hudDirty = true;
     this.placeCharge = 0;
     this.placeGhost.mesh.visible = false;
+    this.hudDirty = true;
+  }
+
+  clearPlaceIntent() {
+    if (!this.placeArmed || this.placing) return;
+    this.placeArmed = false;
+    this.placeGhost.mesh.visible = false;
+    this.hudDirty = true;
   }
 
   beginBreak() {
@@ -465,7 +484,13 @@ ${clay}`,
     this.breakT = 0;
     this.breakCharge = 0;
     this.breakKey = "";
+    this.strikeT = 0;
     this.hudDirty = true;
+    if (this.hit) {
+      this.breakKey = `${this.hit.x},${this.hit.y},${this.hit.z}`;
+      this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+      this.swing = 1;
+    }
   }
 
   endBreak() {
@@ -537,6 +562,7 @@ ${clay}`,
       mesh.geometry.dispose();
     }
     this.material.dispose();
+    this.atlas.dispose();
     this.grainMesh.geometry.dispose();
     (this.grainMesh.material as THREE.Material).dispose();
     this.audio.dispose();
@@ -747,8 +773,8 @@ ${clay}`,
 
   private resize() {
     const parent = this.opts.canvas.parentElement ?? this.opts.canvas;
-    const w = Math.max(1, parent.clientWidth);
-    const h = Math.max(1, parent.clientHeight);
+    const w = Math.max(1, parent.clientWidth || window.innerWidth);
+    const h = Math.max(1, parent.clientHeight || window.innerHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.overlayCam.aspect = Math.max(w / h, 1.2);
@@ -1043,8 +1069,13 @@ ${clay}`,
   }
 
   private updatePlaceHold(dt: number) {
-    const spot = this.placing ? this.placeSpot() : null;
-    if (!this.placing || !spot) {
+    if (this.placeArmed && !this.placing && performance.now() > this.placeArmedUntil) {
+      this.placeArmed = false;
+      this.hudDirty = true;
+    }
+    const aiming = this.placing || this.placeArmed;
+    const spot = aiming ? this.placeSpot() : null;
+    if (!aiming || !spot) {
       this.placeGhost.mesh.visible = false;
       if (this.placeCharge !== 0) {
         this.placeCharge = 0;
@@ -1064,7 +1095,12 @@ ${clay}`,
     this.placeGhost.mat.color.setHex(spot.ok ? color : 0xa33b2a);
     const grow = 0.82 + 0.18 * this.placeCharge;
     this.placeGhost.mesh.scale.setScalar(spot.ok ? grow : 0.92);
-    this.placeGhost.mat.opacity = spot.ok ? 0.2 + 0.28 * this.placeCharge : 0.22;
+    this.placeGhost.mat.opacity = this.placing
+      ? spot.ok
+        ? 0.2 + 0.28 * this.placeCharge
+        : 0.22
+      : 0.16;
+    if (!this.placing) return;
     if (!spot.ok) {
       if (this.placeCharge !== 0) {
         this.placeT = 0;
@@ -1078,6 +1114,12 @@ ${clay}`,
     if (next !== this.placeCharge) {
       this.placeCharge = next;
       this.hudDirty = true;
+    }
+    this.placeTickT += dt;
+    if (this.placeTickT >= 0.12) {
+      this.placeTickT = 0;
+      this.audio.placeTick(spot.block);
+      this.swing = Math.max(this.swing, 0.4);
     }
     if (this.placeT >= PLACE_HOLD_S) {
       if (this.placeBlock()) this.opts.onPlaced?.();
@@ -1102,8 +1144,17 @@ ${clay}`,
     if (key !== this.breakKey) {
       this.breakKey = key;
       this.breakT = 0;
+      this.strikeT = 0;
+      this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+      this.swing = 1;
     }
     this.breakT += dt;
+    this.strikeT += dt;
+    if (this.strikeT >= 0.15) {
+      this.strikeT = 0;
+      this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+      this.swing = 1;
+    }
     const next = Math.min(1, this.breakT / BREAK_HOLD_S);
     if (next !== this.breakCharge) {
       this.breakCharge = next;
@@ -1116,7 +1167,7 @@ ${clay}`,
     const shown = Math.max(1, Math.floor(next * this.breakFx.segmentCount));
     this.breakFx.lines.geometry.setDrawRange(0, shown * 2);
     (this.breakFx.lines.material as THREE.LineBasicMaterial).opacity = 0.55 + next * 0.45;
-    this.swing = Math.max(this.swing, next * 0.55);
+    this.swing = Math.max(this.swing, next * 0.35);
     if (this.breakT >= BREAK_HOLD_S) {
       this.breakBlock();
       this.breakT = 0;
@@ -1128,11 +1179,11 @@ ${clay}`,
   }
 
   private updatePickaxe(dt: number) {
-    if (this.swing > 0) this.swing = Math.max(0, this.swing - dt * 6);
+    if (this.swing > 0) this.swing = Math.max(0, this.swing - dt * 8);
     const waving = this.emote?.kind === "wave";
     this.pickaxe.visible = !waving;
     if (waving) return;
-    const s = Math.sin(this.swing * Math.PI);
+    const s = Math.sin(this.swing * Math.PI * 0.5);
     const bob = Math.sin(this.bob) * 0.018;
     this.pickaxe.rotation.x = PICKAXE_REST.rx - s * 0.9;
     this.pickaxe.rotation.y = PICKAXE_REST.ry + s * 0.1;
@@ -1542,6 +1593,7 @@ ${clay}`,
       worldId: this.opts.worldId,
       isCreator: this.opts.isCreator,
       placeCharge: this.placeCharge,
+      placeIntent: this.placeArmed && !this.placing,
       breakCharge: this.breakCharge,
     });
   }

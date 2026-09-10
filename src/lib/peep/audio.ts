@@ -160,21 +160,30 @@ export class PeepAudio {
     const p = pitchOf(block);
     this.burst({
       buf: "white",
-      dur: 0.05,
-      gain: 0.42,
-      freq: 900 * p,
-      q: 2.2,
+      dur: 0.06,
+      gain: 0.5,
+      freq: 980 * p,
+      q: 2.0,
       type: "bandpass",
-      rate: rand(0.94, 1.1) * p,
+      rate: rand(0.94, 1.08) * p,
     });
     this.burst({
       buf: "brown",
-      dur: 0.12,
-      gain: 0.3,
-      freq: 220 * p,
-      q: 0.85,
+      dur: 0.16,
+      gain: 0.4,
+      freq: 180 * p,
+      q: 0.75,
       type: "lowpass",
-      rate: 0.82 * p,
+      rate: 0.78 * p,
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.04,
+      gain: 0.22,
+      freq: 1600 * p,
+      q: 2.6,
+      type: "highpass",
+      rate: 1.15,
     });
   }
 
@@ -188,6 +197,77 @@ export class PeepAudio {
       q: 2.4,
       type: "bandpass",
       rate: 1.35,
+    });
+  }
+
+  /** First tap: the cell is chosen. Quiet, sharp, not a place. */
+  intent() {
+    this.unlock();
+    this.burst({
+      buf: "white",
+      dur: 0.04,
+      gain: 0.16,
+      freq: 2100,
+      q: 3.2,
+      type: "bandpass",
+      rate: rand(1.05, 1.18),
+    });
+  }
+
+  /** Pickaxe contacting a block while holding break. */
+  strike(block: number) {
+    this.unlock();
+    const p = pitchOf(block);
+    this.burst({
+      buf: "white",
+      dur: 0.032,
+      gain: 0.26,
+      freq: 2400 * Math.min(p, 1.2),
+      q: 2.4,
+      type: "highpass",
+      rate: rand(0.95, 1.12),
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.07,
+      gain: 0.34,
+      freq: 680 * p,
+      q: 1.5,
+      type: "bandpass",
+      rate: rand(0.88, 1.08) * p,
+    });
+    this.burst({
+      buf: "brown",
+      dur: 0.09,
+      gain: 0.22,
+      freq: 150 * p,
+      q: 0.7,
+      type: "lowpass",
+      rate: 0.72 * p,
+    });
+  }
+
+  /** Hold-to-place ticks: the block is settling in. */
+  placeTick(block: number) {
+    this.unlock();
+    const p = pitchOf(block);
+    this.burst({
+      buf: "white",
+      dur: 0.045,
+      gain: 0.2,
+      freq: 760 * p,
+      q: 2.0,
+      type: "bandpass",
+      rate: rand(0.96, 1.08) * p,
+    });
+    this.burst({
+      buf: "brown",
+      dur: 0.07,
+      gain: 0.14,
+      freq: 190 * p,
+      q: 0.9,
+      type: "lowpass",
+      rate: 0.9 * p,
     });
   }
 

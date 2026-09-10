@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { IconClose, IconPhone, IconSend, IconTrash } from "@/components/peep/peep-icons";
+import { IconClose, IconGear, IconPhone, IconSend, IconTrash } from "@/components/peep/peep-icons";
+import { OrientPicker } from "@/components/peep/orient-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getPlayerId, parseWorldId } from "@/lib/peep/player-id";
 import {
   dismissInstallNudge,
   forgetWorld,
-  installTutorialHref,
   listSavedWorlds,
   shouldShowInstallNudge,
   type SavedWorld,
 } from "@/lib/peep/remember-world";
+import { useInstallPrompt } from "@/lib/peep/install";
+import { readOrient, usePhoneUi, type OrientMode } from "@/lib/peep/settings";
 import { createWorld, deleteWorld } from "@/lib/peep/world.functions";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -25,6 +27,10 @@ function Home() {
   const [nudge, setNudge] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [orient, setOrient] = useState<OrientMode>(readOrient);
+  const phone = usePhoneUi();
+  const install = useInstallPrompt();
 
   useEffect(() => {
     setWorlds(listSavedWorlds());
@@ -81,6 +87,16 @@ function Home() {
 
   return (
     <main className="relative min-h-dvh overflow-hidden bg-bg text-fg">
+      {phone ? (
+        <button
+          type="button"
+          aria-label="Настройки"
+          className="absolute right-5 top-5 z-20 flex size-11 items-center justify-center rounded-pixel border-2 border-border bg-surface text-fg shadow-[var(--shadow-panel)]"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <IconGear className="size-5" />
+        </button>
+      ) : null}
       <div className="pointer-events-none absolute inset-0 opacity-70" aria-hidden>
         <div className="pointer-events-none absolute -left-16 top-24 size-40 rotate-12 bg-sage/20" />
         <div className="pointer-events-none absolute left-16 top-40 size-24 bg-primary/20" />
@@ -186,20 +202,21 @@ function Home() {
           </section>
         ) : null}
 
-        {nudge ? (
+        {nudge && !install.installed ? (
           <aside className="mt-8 flex items-start gap-3 rounded-pixel border-2 border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
             <IconPhone className="mt-0.5 size-5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="font-display text-base font-semibold leading-tight">Иконка на телефоне</p>
+              <p className="font-display text-base font-semibold leading-tight">Добавить Peep на главный экран</p>
               <p className="mt-1 text-sm leading-relaxed text-muted">
-                Peep можно поставить как обычное приложение. Тогда остров открывается с экрана — ссылку искать не нужно.
+                Откроется как приложение: без строки браузера, ссылку искать не нужно.
               </p>
-              <a
-                href={installTutorialHref()}
-                className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary"
+              <button
+                type="button"
+                onClick={() => void install.addToHome()}
+                className="mt-3 inline-flex min-h-11 items-center font-mono text-sm uppercase tracking-wide text-primary"
               >
-                Как поставить
-              </a>
+                {install.canNative ? "добавить" : "как поставить"}
+              </button>
             </div>
             <button
               type="button"
@@ -242,8 +259,44 @@ function Home() {
             <IconSend className="size-4" />
             Telegram
           </a>
+          {phone && !install.installed ? (
+            <button
+              type="button"
+              onClick={() => void install.addToHome()}
+              className="mt-3 flex min-h-11 items-center font-mono text-xs uppercase tracking-wide text-muted hover:text-primary"
+            >
+              Добавить Peep на главный экран
+            </button>
+          ) : null}
         </footer>
       </div>
+
+      {settingsOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-fg/40 px-6"
+          onClick={() => setSettingsOpen(false)}
+        >
+          <div
+            className="w-[min(380px,100%)] rounded-pixel border-2 border-border bg-surface p-5 text-fg shadow-[var(--shadow-panel)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-mono text-sm uppercase tracking-widest">настройки</p>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="flex size-11 items-center justify-center text-muted"
+                onClick={() => setSettingsOpen(false)}
+              >
+                <IconClose className="size-4" />
+              </button>
+            </div>
+            <div className="mt-5">
+              <OrientPicker value={orient} onChange={setOrient} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -4,6 +4,8 @@ import { EmoteBar } from "@/components/peep/emote-bar";
 import {
   IconClose,
   IconCopy,
+  IconFullscreen,
+  IconFullscreenExit,
   IconGear,
   IconQr,
   IconReset,
@@ -50,21 +52,25 @@ function Chip({
 export function GameHud({
   hud,
   orient,
-  onOrient,
+  phone,
   onSelect,
   onInvite,
   inviteUrl,
   onEmote,
   onReset,
+  fullscreen,
+  onFullscreen,
 }: {
   hud: HudState;
   orient: OrientMode;
-  onOrient: (mode: OrientMode) => void;
+  phone: boolean;
   onSelect: (i: number) => void;
   onInvite: () => void;
   inviteUrl: string;
   onEmote: (kind: EmoteKind) => void;
   onReset: () => Promise<boolean>;
+  fullscreen: boolean;
+  onFullscreen: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -87,19 +93,28 @@ export function GameHud({
           land ? "top-2 right-2 left-2" : "top-3 right-3 left-3 gap-2",
         )}
       >
-        <Link
-          to="/"
-          aria-label="На главную"
-          className="flex h-11 min-w-11 flex-col justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2.5 active:scale-95"
-        >
-          <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
-          {land ? null : <span className="mt-0.5 text-xs uppercase tracking-wider text-muted-on-ink">home</span>}
-        </Link>
+        <div className="flex items-center gap-1">
+          <Link
+            to="/"
+            aria-label="На главную"
+            className="flex h-11 min-w-11 flex-col justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2.5 active:scale-95"
+          >
+            <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
+            {land ? null : <span className="mt-0.5 text-xs uppercase tracking-wider text-muted-on-ink">home</span>}
+          </Link>
+          <Chip
+            aria-label={fullscreen ? "Выйти из полного экрана" : "Полный экран"}
+            className="size-11 shrink-0 px-0"
+            onClick={onFullscreen}
+          >
+            {fullscreen ? <IconFullscreenExit className="size-4" /> : <IconFullscreen className="size-4" />}
+          </Chip>
+        </div>
 
         {hud.playing ? <EmoteBar layout="row" onEmote={onEmote} /> : <span className="min-w-0 flex-1" />}
 
-        <div className="flex items-center gap-1">
-          <div className="flex h-11 items-center gap-1.5 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2 text-xs uppercase tracking-wide text-muted-on-ink">
+        <div className="flex shrink-0 items-center gap-1">
+          <div className="hidden h-11 items-center gap-1.5 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2 text-xs uppercase tracking-wide text-muted-on-ink sm:flex">
             <IconUsers className="size-3.5" />
             <span className="tabular-nums">{hud.peerCount}</span>
           </div>
@@ -117,7 +132,7 @@ export function GameHud({
             <span className="hidden sm:inline">{copied ? "ok" : "invite"}</span>
           </Chip>
 
-          <Chip aria-label="QR-код мира" className="size-11 px-0" onClick={() => setQrOpen(true)}>
+          <Chip aria-label="QR-код мира" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
             <IconQr className="size-4" />
           </Chip>
 
@@ -129,6 +144,9 @@ export function GameHud({
 
       <div className="absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
         <svg viewBox="0 0 36 36" className="size-9 -rotate-90" aria-hidden>
+          {hud.placeIntent && hud.placeCharge === 0 ? (
+            <circle cx="18" cy="18" r="14" fill="none" className="stroke-primary/70" strokeWidth="2" strokeDasharray="3 4" />
+          ) : null}
           {hud.placeCharge > 0 ? (
             <circle
               cx="18"
@@ -242,34 +260,29 @@ export function GameHud({
               </button>
             </div>
             <div className="mt-5">
-              <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">ориентация</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => onOrient("portrait")}
-                  className={cn(
-                    "min-h-12 rounded-pixel border-2 px-3 font-mono text-xs uppercase tracking-wide",
-                    orient === "portrait"
-                      ? "border-primary bg-primary text-primary-fg"
-                      : "border-border-ink bg-bg-deep/40 text-fg-on-ink",
-                  )}
-                >
-                  книжная
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onOrient("landscape")}
-                  className={cn(
-                    "min-h-12 rounded-pixel border-2 px-3 font-mono text-xs uppercase tracking-wide",
-                    orient === "landscape"
-                      ? "border-primary bg-primary text-primary-fg"
-                      : "border-border-ink bg-bg-deep/40 text-fg-on-ink",
-                  )}
-                >
-                  альбомная
-                </button>
-              </div>
+              {phone ? (
+                <p className="text-sm leading-relaxed text-muted-on-ink">
+                  Полный экран — кнопка рядом с Peep. Ориентация — шестерёнка на главной.
+                </p>
+              ) : (
+                <p className="text-sm leading-relaxed text-muted-on-ink">
+                  На компьютере мир на весь экран. Кнопка полного экрана прячет панель браузера.
+                </p>
+              )}
             </div>
+            {phone ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setQrOpen(true);
+                }}
+                className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+              >
+                <IconQr className="size-4" />
+                qr · invite
+              </button>
+            ) : null}
             {hud.isCreator && hud.playing ? (
               <div className="mt-6 border-t-2 border-border-ink pt-5">
                 <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">остров</p>

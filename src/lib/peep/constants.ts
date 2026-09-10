@@ -42,9 +42,12 @@ export const PRESENCE_TTL_SECONDS = 12;
 export const RATE_WINDOW_SECONDS = 8;
 export const RATE_MAX_EDITS = 50;
 
-/** Hold to place / break so a look-drag or jump tap cannot edit by accident. */
-export const PLACE_HOLD_S = 0.6;
-export const BREAK_HOLD_S = 0.4;
+/** Place: a lone tap never builds. Sharp double-tap, then hold the second tap. */
+export const PLACE_TAP_MAX_MS = 260;
+export const PLACE_DOUBLE_MS = 280;
+export const PLACE_HOLD_CONFIRM_MS = 70;
+export const PLACE_HOLD_S = 0.45;
+export const BREAK_HOLD_S = 0.3;
 
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 

@@ -1,4 +1,5 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import { PLACE_DOUBLE_MS, PLACE_HOLD_CONFIRM_MS, PLACE_TAP_MAX_MS } from "@/lib/peep/constants";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { IconJump, IconPick } from "@/components/peep/peep-icons";
 import type { OrientMode } from "@/lib/peep/settings";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,7 @@ const KNOB_R_LAND = 18;
 const DEAD_ZONE = 8;
 
 const LOOK_SLOP = 16;
+const TAP_DIST = 48;
 
 function capture(el: Element, pointerId: number) {
   try {
@@ -30,14 +32,43 @@ export function LookSurface({
 }) {
   const active = useRef<number | null>(null);
   const last = useRef<{ x: number; y: number; t: number } | null>(null);
-  const start = useRef<{ x: number; y: number } | null>(null);
+  const start = useRef<{ x: number; y: number; t: number } | null>(null);
   const looking = useRef(false);
+  const holding = useRef(false);
+  const comboDown = useRef(false);
+  const pending = useRef<{ x: number; y: number; t: number } | null>(null);
+  const confirmTimer = useRef(0);
+
+  useEffect(
+    () => () => {
+      if (confirmTimer.current) window.clearTimeout(confirmTimer.current);
+    },
+    [],
+  );
+
+  const clearConfirm = () => {
+    if (confirmTimer.current) {
+      window.clearTimeout(confirmTimer.current);
+      confirmTimer.current = 0;
+    }
+  };
+
+  const stopHold = () => {
+    clearConfirm();
+    comboDown.current = false;
+    if (holding.current) {
+      holding.current = false;
+      onHoldEnd?.();
+    }
+  };
 
   const release = () => {
     active.current = null;
     last.current = null;
     start.current = null;
     looking.current = false;
+    holding.current = false;
+    comboDown.current = false;
   };
 
   return (
@@ -46,13 +77,29 @@ export function LookSurface({
       onPointerDown={(e) => {
         if (active.current !== null) return;
         e.preventDefault();
-        active.current = e.pointerId;
         const now = performance.now();
+        active.current = e.pointerId;
         last.current = { x: e.clientX, y: e.clientY, t: now };
-        start.current = { x: e.clientX, y: e.clientY };
+        start.current = { x: e.clientX, y: e.clientY, t: now };
         looking.current = false;
+        holding.current = false;
         capture(e.currentTarget, e.pointerId);
-        onHoldStart?.();
+
+        const first = pending.current;
+        pending.current = null;
+        const sharp =
+          first !== null &&
+          now - first.t <= PLACE_DOUBLE_MS &&
+          Math.hypot(e.clientX - first.x, e.clientY - first.y) <= TAP_DIST;
+        comboDown.current = sharp;
+        if (!sharp) return;
+        clearConfirm();
+        confirmTimer.current = window.setTimeout(() => {
+          confirmTimer.current = 0;
+          if (!comboDown.current || looking.current || active.current !== e.pointerId) return;
+          holding.current = true;
+          onHoldStart?.();
+        }, PLACE_HOLD_CONFIRM_MS);
       }}
       onPointerMove={(e) => {
         if (active.current !== e.pointerId || !last.current || !start.current) return;
@@ -64,7 +111,8 @@ export function LookSurface({
         const fromStart = Math.hypot(e.clientX - start.current.x, e.clientY - start.current.y);
         if (!looking.current && fromStart > LOOK_SLOP) {
           looking.current = true;
-          onHoldEnd?.();
+          pending.current = null;
+          stopHold();
         }
         if (!looking.current) return;
         const speed = Math.hypot(dx, dy) / dt;
@@ -73,15 +121,31 @@ export function LookSurface({
         onLook(dx * gain, dy * gain);
       }}
       onPointerUp={(e) => {
-        if (active.current !== e.pointerId) return;
+        if (active.current !== e.pointerId || !start.current) return;
         const wasLooking = looking.current;
+        const wasHolding = holding.current;
+        const wasCombo = comboDown.current;
+        const downMs = performance.now() - start.current.t;
+        const x = start.current.x;
+        const y = start.current.y;
+        clearConfirm();
         release();
-        if (!wasLooking) onHoldEnd?.();
+        if (wasHolding) {
+          onHoldEnd?.();
+          return;
+        }
+        if (wasLooking) return;
+        if (downMs > PLACE_TAP_MAX_MS) return;
+        if (wasCombo) return;
+        pending.current = { x, y, t: performance.now() };
       }}
       onPointerCancel={(e) => {
         if (active.current !== e.pointerId) return;
+        const wasHolding = holding.current;
+        clearConfirm();
+        pending.current = null;
         release();
-        onHoldEnd?.();
+        if (wasHolding) onHoldEnd?.();
       }}
       aria-label="Взгляд"
     />
@@ -345,7 +409,7 @@ export function PlaceHint({
         opacity,
       }}
     >
-      зажми экран  поставить блок
+      зажми кирку ломать · свайп — взгляд · двойной тап-держи — блок
     </p>
   );
 }
