@@ -1,11 +1,11 @@
-import { Hand, Heart, Smile } from "lucide-react";
+import { IconHeart, IconLaugh, IconWave } from "@/components/peep/peep-icons";
 import type { EmoteKind } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
 
-const EMOTES: { kind: EmoteKind; label: string; Icon: typeof Hand }[] = [
-  { kind: "wave", label: "Помахать", Icon: Hand },
-  { kind: "hearts", label: "Сердца", Icon: Heart },
-  { kind: "laugh", label: "Смех", Icon: Smile },
+const EMOTES: { kind: EmoteKind; label: string; Icon: typeof IconWave }[] = [
+  { kind: "wave", label: "Помахать", Icon: IconWave },
+  { kind: "hearts", label: "Сердца", Icon: IconHeart },
+  { kind: "laugh", label: "Смех", Icon: IconLaugh },
 ];
 
 export function EmoteBar({
@@ -18,7 +18,7 @@ export function EmoteBar({
   return (
     <div
       className={cn(
-        "pointer-events-auto flex gap-2",
+        "pointer-events-auto flex gap-1",
         layout === "column" ? "flex-col items-center" : "flex-row items-center",
       )}
     >
@@ -32,12 +32,12 @@ export function EmoteBar({
             onEmote(kind);
           }}
           className={cn(
-            "flex size-11 items-center justify-center rounded-full",
-            "border border-white/25 bg-black/45 text-white",
-            "active:scale-95 active:bg-black/55",
+            "flex size-10 items-center justify-center rounded-pixel sm:size-11",
+            "border-2 border-fg-on-ink/30 bg-bg-deep/55 text-fg-on-ink",
+            "active:scale-95 active:bg-bg-deep/70",
           )}
         >
-          <Icon className="size-5" strokeWidth={2.2} />
+          <Icon className="size-5" />
         </button>
       ))}
     </div>
