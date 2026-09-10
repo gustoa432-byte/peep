@@ -42,6 +42,10 @@ export const PRESENCE_TTL_SECONDS = 12;
 export const RATE_WINDOW_SECONDS = 8;
 export const RATE_MAX_EDITS = 50;
 
+/** Hold to place / break so a look-drag or jump tap cannot edit by accident. */
+export const PLACE_HOLD_S = 0.6;
+export const BREAK_HOLD_S = 0.4;
+
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 
 export const BLOCK_COLORS: Record<number, number> = {

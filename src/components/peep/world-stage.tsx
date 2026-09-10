@@ -26,6 +26,8 @@ const EMPTY_HUD: HudState = {
   playing: false,
   worldId: "",
   isCreator: false,
+  placeCharge: 0,
+  breakCharge: 0,
 };
 
 export function WorldStage({
@@ -70,6 +72,7 @@ export function WorldStage({
       playerId,
       onHud: setHud,
       onLost: () => setLost(true),
+      onPlaced: () => setPlaced(recordPlacedBlock()),
     });
     gameRef.current = game;
     void lockOrient(orient);
@@ -122,17 +125,17 @@ export function WorldStage({
           >
             <LookSurface
               onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
-              onDoubleTap={() => {
-                if (!gameRef.current?.placeTarget()) return;
-                setPlaced(recordPlacedBlock());
-              }}
+              onHoldStart={() => gameRef.current?.beginPlace()}
+              onHoldEnd={() => gameRef.current?.endPlace()}
             />
           </div>
           <TouchControls
             orient={orient}
             force={coarse}
+            breakCharge={hud.breakCharge}
             onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
-            onBreak={() => gameRef.current?.breakTarget()}
+            onBreakHold={() => gameRef.current?.beginBreak()}
+            onBreakRelease={() => gameRef.current?.endBreak()}
             onJump={() => gameRef.current?.jump()}
           />
           <PlaceHint placed={placed} orient={orient} force={coarse} />
@@ -172,7 +175,7 @@ export function WorldStage({
               войти в мир
             </Button>
             <p className="mt-3 text-center font-mono text-xs uppercase tracking-wide text-muted-on-ink md:hidden">
-              стик — ход · свайп — взгляд · двойной тап — блок · зажать кирку — ломать
+              стик — ход · свайп — взгляд · зажми экран — блок · зажми кирку — ломать
             </p>
           </div>
         </div>
