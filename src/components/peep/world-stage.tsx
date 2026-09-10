@@ -6,8 +6,17 @@ import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE } from "@/lib/peep/constants";
 import { PeepGame } from "@/lib/peep/game";
 import { markSessionDone, placedBlockCount, recordPlacedBlock } from "@/lib/peep/remember-world";
+import {
+  lockOrient,
+  readOrient,
+  unlockOrient,
+  useMatchMedia,
+  writeOrient,
+  type OrientMode,
+} from "@/lib/peep/settings";
 import { leaveWorld, trackEvent } from "@/lib/peep/world.functions";
 import type { BlockEdit, HudState } from "@/lib/peep/types";
+import { cn } from "@/lib/utils";
 
 const EMPTY_HUD: HudState = {
   palette: BLOCK_PALETTE,
@@ -41,6 +50,11 @@ export function WorldStage({
   const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, worldId, isCreator });
   const [lost, setLost] = useState(false);
   const [placed, setPlaced] = useState(placedBlockCount);
+  const [orient, setOrient] = useState<OrientMode>(readOrient);
+  const coarse = useMatchMedia("(pointer: coarse)");
+  const viewLand = useMatchMedia("(orientation: landscape)");
+  const inviteUrl = typeof window === "undefined" ? "" : `${window.location.origin}/world/${worldId}`;
+  const needRotate = coarse && ((orient === "landscape" && !viewLand) || (orient === "portrait" && viewLand));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -58,7 +72,9 @@ export function WorldStage({
       onLost: () => setLost(true),
     });
     gameRef.current = game;
+    void lockOrient(orient);
     return () => {
+      unlockOrient();
       game.dispose();
       gameRef.current = null;
       markSessionDone();
@@ -76,11 +92,20 @@ export function WorldStage({
     void trackEvent({ data: { name: "invite", worldId, playerId } });
   };
 
+  const changeOrient = (mode: OrientMode) => {
+    writeOrient(mode);
+    setOrient(mode);
+    void lockOrient(mode);
+  };
+
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-bg-deep touch-none">
+    <div className="relative h-dvh w-full overflow-hidden bg-bg-deep font-mono touch-none" data-orient={orient}>
       <canvas ref={canvasRef} className="block h-full w-full touch-none" />
       <GameHud
         hud={hud}
+        orient={orient}
+        onOrient={changeOrient}
+        inviteUrl={inviteUrl}
         onSelect={(i) => gameRef.current?.setSelected(i)}
         onInvite={() => void invite()}
         onEmote={(kind) => gameRef.current?.playEmote(kind)}
@@ -89,7 +114,12 @@ export function WorldStage({
 
       {hud.playing ? (
         <>
-          <div className="pointer-events-none absolute inset-0 z-20 hidden max-md:block [@media(pointer:coarse)]:block">
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-20",
+              coarse ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
+            )}
+          >
             <LookSurface
               onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
               onDoubleTap={() => {
@@ -99,30 +129,50 @@ export function WorldStage({
             />
           </div>
           <TouchControls
+            orient={orient}
+            force={coarse}
             onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
             onBreak={() => gameRef.current?.breakTarget()}
             onJump={() => gameRef.current?.jump()}
           />
-          <PlaceHint placed={placed} />
+          <PlaceHint placed={placed} orient={orient} force={coarse} />
         </>
+      ) : null}
+
+      {needRotate && hud.playing ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/80 px-6">
+          <div className="w-[min(360px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-center text-fg-on-ink">
+            <p className="font-mono text-sm uppercase tracking-widest">поверните телефон</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
+              {orient === "landscape" ? "Нужна альбомная ориентация." : "Нужна книжная ориентация."}
+            </p>
+            <Button
+              className="mt-4 w-full rounded-pixel font-mono uppercase tracking-wide"
+              variant="secondary"
+              onClick={() => changeOrient(orient === "landscape" ? "portrait" : "landscape")}
+            >
+              {orient === "landscape" ? "оставить книжную" : "оставить альбомную"}
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       {!hud.playing && !lost ? (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-deep/45 px-6">
-          <div className="w-[min(420px,100%)] rounded-xl border border-border-ink bg-surface-ink p-6 text-fg-on-ink shadow-[var(--shadow-panel)]">
-            <p className="font-display text-2xl font-semibold tracking-tight">Мир готов</p>
+          <div className="w-[min(420px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
+            <p className="font-mono text-xl uppercase tracking-wide">мир готов</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Нажмите, чтобы войти. Отправьте другу ссылку Invite — вы окажетесь в одном мире.
+              Нажмите, чтобы войти. Invite — ссылка или QR. Друг окажется в том же мире.
             </p>
             <Button
-              className="mt-5 w-full"
+              className="mt-5 w-full rounded-pixel font-mono uppercase tracking-wide"
               size="lg"
               onClick={() => gameRef.current?.startPlaying()}
             >
-              Войти в мир
+              войти в мир
             </Button>
-            <p className="mt-3 text-center text-xs text-muted-on-ink md:hidden">
-              Слева внизу — ходи. Свайп по миру — смотри. Двойной тап — ставить. Справа — ломать и прыжок.
+            <p className="mt-3 text-center font-mono text-xs uppercase tracking-wide text-muted-on-ink md:hidden">
+              стик — ход · свайп — взгляд · двойной тап — блок · зажать кирку — ломать
             </p>
           </div>
         </div>
@@ -130,16 +180,15 @@ export function WorldStage({
 
       {lost ? (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-bg-deep/70 px-6">
-          <div className="w-[min(400px,100%)] rounded-xl bg-surface p-6 text-fg">
-            <p className="font-display text-xl font-semibold">Connection lost</p>
+          <div className="w-[min(400px,100%)] rounded-pixel border-2 border-border bg-surface p-6 text-fg">
+            <p className="font-mono text-xl uppercase tracking-wide">connection lost</p>
             <p className="mt-2 text-sm text-muted">Сервер недоступен. Попробуйте открыть мир снова.</p>
-            <Button asChild className="mt-5 w-full" variant="ink">
-              <Link to="/">На главную</Link>
+            <Button asChild className="mt-5 w-full rounded-pixel font-mono uppercase" variant="ink">
+              <Link to="/">на главную</Link>
             </Button>
           </div>
         </div>
       ) : null}
-
     </div>
   );
 }

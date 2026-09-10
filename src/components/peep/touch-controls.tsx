@@ -1,9 +1,12 @@
-import { type ReactNode, useCallback, useRef, useState } from "react";
-import { Pickaxe } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { IconJump, IconPick } from "@/components/peep/peep-icons";
+import type { OrientMode } from "@/lib/peep/settings";
 import { cn } from "@/lib/utils";
 
 const BASE_R = 52;
+const BASE_R_LAND = 40;
 const KNOB_R = 22;
+const KNOB_R_LAND = 18;
 const DEAD_ZONE = 8;
 
 const TAP_MOVE = 16;
@@ -12,7 +15,9 @@ const TAP_MS = 220;
 const DOUBLE_MS = 280;
 const DOUBLE_DIST = 40;
 
-/** Capture is best-effort: a pointer the browser no longer tracks throws. */
+/** Hold time before a break fires — keeps a jump tap from mining. */
+const BREAK_CHARGE_MS = 620;
+
 function capture(el: Element, pointerId: number) {
   try {
     el.setPointerCapture(pointerId);
@@ -21,32 +26,6 @@ function capture(el: Element, pointerId: number) {
   }
 }
 
-function JumpIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <circle cx="12" cy="4.6" r="2.1" />
-      <path d="M9.2 22 11 14.6 8.4 11.2h7.2L13 14.6 14.8 22" />
-      <path d="M7.4 9.6c1.4-1.8 3-2.6 4.6-2.6s3.2.8 4.6 2.6" />
-      <path d="M5.2 13.2 3.6 11.4" />
-      <path d="M18.8 13.2 20.4 11.4" />
-    </svg>
-  );
-}
-
-/**
- * Full free-area look. Slow drag stays gentle; a sharp swipe (any axis) boosts
- * yaw/pitch on a superlinear curve so a flick turns the view much farther.
- * A sharp double-tap (little movement, short gap) places a block.
- */
 export function LookSurface({
   onLook,
   onDoubleTap,
@@ -127,10 +106,18 @@ export function LookSurface({
   );
 }
 
-function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
+function MoveStick({
+  onAxis,
+  compact,
+}: {
+  onAxis: (x: number, z: number) => void;
+  compact: boolean;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const active = useRef<number | null>(null);
+  const radius = compact ? BASE_R_LAND : BASE_R;
+  const knobR = compact ? KNOB_R_LAND : KNOB_R;
 
   const origin = () => {
     const el = boxRef.current;
@@ -151,7 +138,7 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
       const dx = clientX - cx;
       const dy = clientY - cy;
       const dist = Math.hypot(dx, dy);
-      const clamped = Math.min(dist, BASE_R);
+      const clamped = Math.min(dist, radius);
       const ux = dist > 0 ? dx / dist : 0;
       const uy = dist > 0 ? dy / dist : 0;
       setKnob({ x: ux * clamped, y: uy * clamped });
@@ -159,10 +146,10 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
         onAxis(0, 0);
         return;
       }
-      const power = clamped / BASE_R;
+      const power = clamped / radius;
       onAxis(ux * power, -uy * power);
     },
-    [onAxis],
+    [onAxis, radius],
   );
 
   return (
@@ -170,10 +157,12 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
       ref={boxRef}
       className="pointer-events-auto absolute z-40 touch-none"
       style={{
-        left: "0.75rem",
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-        width: BASE_R * 2 + 16,
-        height: BASE_R * 2 + 16,
+        left: compact ? "0.4rem" : "0.75rem",
+        bottom: compact
+          ? "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)"
+          : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+        width: radius * 2 + 16,
+        height: radius * 2 + 16,
       }}
       onPointerDown={(e) => {
         if (active.current !== null) return;
@@ -198,14 +187,14 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
       aria-label="Движение"
     >
       <span
-        className="pointer-events-none absolute inset-2 rounded-full border border-white/10 bg-white/[0.1]"
+        className="pointer-events-none absolute inset-2 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/20"
         aria-hidden
       />
       <span
-        className="pointer-events-none absolute rounded-full border border-white/15 bg-white/10"
+        className="pointer-events-none absolute rounded-pixel border-2 border-fg-on-ink/40 bg-fg-on-ink/15"
         style={{
-          width: KNOB_R * 2,
-          height: KNOB_R * 2,
+          width: knobR * 2,
+          height: knobR * 2,
           left: "50%",
           top: "50%",
           transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))`,
@@ -219,33 +208,22 @@ function MoveStick({ onAxis }: { onAxis: (x: number, z: number) => void }) {
 function ActionButton({
   label,
   onFire,
-  repeatMs,
   className,
   children,
 }: {
   label: string;
   onFire: () => void;
-  repeatMs?: number;
   className?: string;
   children: ReactNode;
 }) {
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stop = () => {
-    if (timer.current) {
-      clearInterval(timer.current);
-      timer.current = null;
-    }
-  };
-
   return (
     <button
       type="button"
       aria-label={label}
       className={cn(
-        "pointer-events-auto flex items-center justify-center touch-none select-none rounded-full border border-white/25",
-        "bg-black/45 text-white",
-        "active:scale-95 active:bg-black/55",
+        "pointer-events-auto flex items-center justify-center touch-none select-none rounded-pixel",
+        "border-2 border-fg-on-ink/35 bg-bg-deep/55 text-fg-on-ink",
+        "active:scale-95 active:bg-bg-deep/70",
         className,
       )}
       onPointerDown={(e) => {
@@ -253,15 +231,87 @@ function ActionButton({
         e.stopPropagation();
         capture(e.currentTarget, e.pointerId);
         onFire();
-        if (repeatMs) {
-          stop();
-          timer.current = setInterval(onFire, repeatMs);
-        }
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BreakSpell({ onBreak, className }: { onBreak: () => void; className?: string }) {
+  const [charge, setCharge] = useState(0);
+  const holding = useRef(false);
+  const start = useRef(0);
+  const raf = useRef(0);
+  const onBreakRef = useRef(onBreak);
+  onBreakRef.current = onBreak;
+
+  const stop = useCallback(() => {
+    holding.current = false;
+    cancelAnimationFrame(raf.current);
+    setCharge(0);
+  }, []);
+
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+
+  const tick = (now: number) => {
+    if (!holding.current) return;
+    const t = Math.min(1, (now - start.current) / BREAK_CHARGE_MS);
+    setCharge(t);
+    if (t >= 1) {
+      onBreakRef.current();
+      start.current = now;
+      setCharge(0);
+    }
+    raf.current = requestAnimationFrame(tick);
+  };
+
+  const c = 2 * Math.PI * 26;
+
+  return (
+    <button
+      type="button"
+      aria-label="Ломать"
+      className={cn(
+        "pointer-events-auto relative flex items-center justify-center touch-none select-none rounded-pixel",
+        "border-2 border-fg-on-ink/35 bg-bg-deep/55 text-fg-on-ink",
+        "active:bg-bg-deep/70",
+        className,
+      )}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        capture(e.currentTarget, e.pointerId);
+        holding.current = true;
+        start.current = performance.now();
+        setCharge(0);
+        cancelAnimationFrame(raf.current);
+        raf.current = requestAnimationFrame(tick);
       }}
       onPointerUp={stop}
       onPointerCancel={stop}
     >
-      {children}
+      <svg viewBox="0 0 56 56" className="pointer-events-none absolute inset-0 size-full -rotate-90" aria-hidden>
+        <circle
+          cx="28"
+          cy="28"
+          r="26"
+          fill="none"
+          className="stroke-fg-on-ink/20"
+          strokeWidth="3"
+        />
+        <circle
+          cx="28"
+          cy="28"
+          r="26"
+          fill="none"
+          className="stroke-primary"
+          strokeWidth="3"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - charge)}
+        />
+      </svg>
+      <IconPick className="relative size-6" />
     </button>
   );
 }
@@ -270,41 +320,66 @@ export function TouchControls({
   onAxis,
   onBreak,
   onJump,
+  orient,
+  force,
 }: {
   onAxis: (x: number, z: number) => void;
   onBreak: () => void;
   onJump: () => void;
+  orient: OrientMode;
+  force?: boolean;
 }) {
+  const land = orient === "landscape";
   return (
-    <div className="pointer-events-none absolute inset-0 z-40 hidden max-md:block [@media(pointer:coarse)]:block">
-      <MoveStick onAxis={onAxis} />
+    <div
+      className={cn(
+        "pointer-events-none absolute inset-0 z-40",
+        force ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
+      )}
+    >
+      <MoveStick onAxis={onAxis} compact={land} />
 
       <div
-        className="pointer-events-none absolute right-2 z-40 flex items-end gap-2"
-        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
+        className={cn("pointer-events-none absolute z-40 flex", land ? "flex-row items-end gap-2" : "flex-col items-end gap-2")}
+        style={{
+          right: land ? "0.4rem" : "0.5rem",
+          bottom: land
+            ? "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)"
+            : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+        }}
       >
-        <div className="flex flex-col items-end gap-2.5">
-          <ActionButton label="Ломать" onFire={onBreak} repeatMs={220} className="size-14">
-            <Pickaxe className="size-6" strokeWidth={2.1} />
-          </ActionButton>
-          <ActionButton label="Прыжок" onFire={onJump} className="size-[4.25rem]">
-            <JumpIcon className="size-8" />
-          </ActionButton>
-        </div>
+        <BreakSpell onBreak={onBreak} className={land ? "size-14" : "size-14"} />
+        <ActionButton label="Прыжок" onFire={onJump} className={land ? "size-16" : "size-[4.25rem]"}>
+          <IconJump className={land ? "size-7" : "size-8"} />
+        </ActionButton>
       </div>
     </div>
   );
 }
 
-export function PlaceHint({ placed }: { placed: number }) {
+export function PlaceHint({
+  placed,
+  orient,
+  force,
+}: {
+  placed: number;
+  orient: OrientMode;
+  force?: boolean;
+}) {
   const opacity = placed >= 5 ? 0.05 : 0.4;
+  const land = orient === "landscape";
   return (
     <p
-      className="pointer-events-none absolute z-30 hidden text-center font-display text-[10px] leading-snug text-white max-md:block [@media(pointer:coarse)]:block"
+      className={cn(
+        "pointer-events-none absolute z-30 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink",
+        force ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
+      )}
       style={{
-        left: "7.25rem",
-        right: "5.5rem",
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)",
+        left: land ? "7rem" : "7.25rem",
+        right: land ? "8rem" : "5.5rem",
+        bottom: land
+          ? "calc(env(safe-area-inset-bottom, 0px) + 3.6rem)"
+          : "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)",
         opacity,
       }}
     >

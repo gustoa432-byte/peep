@@ -1,9 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { Copy, RotateCcw, Users } from "lucide-react";
-import { useState } from "react";
+import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
 import { EmoteBar } from "@/components/peep/emote-bar";
+import {
+  IconClose,
+  IconCopy,
+  IconGear,
+  IconQr,
+  IconReset,
+  IconUsers,
+} from "@/components/peep/peep-icons";
+import { QrMark } from "@/components/peep/qr-mark";
 import { Button } from "@/components/ui/button";
 import { BLOCK_COLORS, BLOCK_NAMES, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
+import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
 
@@ -19,98 +28,130 @@ function swatchStyle(block: number): { background: string } {
   return { background: swatch(block) };
 }
 
+function Chip({
+  className,
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex h-11 items-center justify-center gap-1.5 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2.5 font-mono text-xs uppercase tracking-wide text-fg-on-ink active:scale-95",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function GameHud({
   hud,
+  orient,
+  onOrient,
   onSelect,
   onInvite,
+  inviteUrl,
   onEmote,
   onReset,
 }: {
   hud: HudState;
+  orient: OrientMode;
+  onOrient: (mode: OrientMode) => void;
   onSelect: (i: number) => void;
   onInvite: () => void;
+  inviteUrl: string;
   onEmote: (kind: EmoteKind) => void;
   onReset: () => Promise<boolean>;
 }) {
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const land = orient === "landscape";
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-30 text-fg-on-ink"
+      className="pointer-events-none absolute inset-0 z-30 font-mono text-fg-on-ink"
       style={{
         paddingTop: "env(safe-area-inset-top, 0px)",
         paddingBottom: "env(safe-area-inset-bottom, 0px)",
       }}
     >
-      <div className="pointer-events-auto absolute top-3 right-3 left-3 flex items-start justify-between gap-2">
+      <div
+        className={cn(
+          "pointer-events-auto absolute flex items-start justify-between gap-1",
+          land ? "top-2 right-2 left-2" : "top-3 right-3 left-3 gap-2",
+        )}
+      >
         <Link
           to="/"
           aria-label="На главную"
-          className="flex min-h-11 min-w-11 flex-col justify-center rounded-lg bg-bg-deep/70 px-2.5 py-1.5 active:scale-95"
+          className="flex h-11 min-w-11 flex-col justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2.5 active:scale-95"
         >
           <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
-          <span className="mt-0.5 text-xs text-muted-on-ink">домой</span>
+          {land ? null : <span className="mt-0.5 text-xs uppercase tracking-wider text-muted-on-ink">home</span>}
         </Link>
 
         {hud.playing ? <EmoteBar layout="row" onEmote={onEmote} /> : <span className="min-w-0 flex-1" />}
 
-        <div className="flex items-center gap-2">
-          {hud.isCreator && hud.playing ? (
-            <button
-              type="button"
-              onClick={() => setConfirmReset(true)}
-              aria-label="Сбросить остров"
-              className="flex size-11 items-center justify-center rounded-lg bg-bg-deep/70 text-fg-on-ink active:scale-95"
-            >
-              <RotateCcw className="size-4" strokeWidth={2.2} />
-            </button>
-          ) : null}
-
-          <div className="flex h-11 items-center gap-1.5 rounded-lg bg-bg-deep/70 px-2.5 text-xs text-muted-on-ink">
-            <Users className="size-3.5" strokeWidth={2} />
-            <span className="hidden sm:inline">
-              {hud.peerCount < 2 ? "Один в мире" : hud.peerConnected ? "Вместе" : "Друг рядом"}
-            </span>
-            <span className="tabular-nums sm:hidden">{hud.peerCount}</span>
+        <div className="flex items-center gap-1">
+          <div className="flex h-11 items-center gap-1.5 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2 text-xs uppercase tracking-wide text-muted-on-ink">
+            <IconUsers className="size-3.5" />
+            <span className="tabular-nums">{hud.peerCount}</span>
           </div>
 
-          <button
-            type="button"
+          <Chip
+            aria-label="Скопировать ссылку"
+            className="bg-primary text-primary-fg border-primary px-3"
             onClick={() => {
               onInvite();
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1600);
             }}
-            className={cn(
-              "flex h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium",
-              "bg-primary text-primary-fg shadow-[var(--shadow-panel)] active:scale-95",
-            )}
           >
-            <Copy className="size-3.5" strokeWidth={2.2} />
-            {copied ? "Скопировано" : "Invite"}
-          </button>
+            <IconCopy className="size-3.5" />
+            <span className="hidden sm:inline">{copied ? "ok" : "invite"}</span>
+          </Chip>
+
+          <Chip aria-label="QR-код мира" className="size-11 px-0" onClick={() => setQrOpen(true)}>
+            <IconQr className="size-4" />
+          </Chip>
+
+          <Chip aria-label="Настройки" className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
+            <IconGear className="size-4" />
+          </Chip>
         </div>
       </div>
 
       <div className="absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
-        <div className="size-[14px]">
-          <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-fg-on-ink/90" />
-          <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-fg-on-ink/90" />
+        <div className="size-3">
+          <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-fg-on-ink" />
+          <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-fg-on-ink" />
         </div>
       </div>
 
-      {/* Hotbar is the whole inventory (TZ §3.4). */}
       <div
         className={cn(
-          "pointer-events-auto absolute z-30 flex items-end gap-2",
-          "bottom-3 left-1/2 -translate-x-1/2",
-          "max-md:bottom-[9.75rem] max-md:left-3 max-md:translate-x-0",
-          "[@media(pointer:coarse)]:bottom-[9.75rem] [@media(pointer:coarse)]:left-3 [@media(pointer:coarse)]:translate-x-0",
+          "pointer-events-auto absolute z-30 flex items-end gap-1",
+          land
+            ? "bottom-3 left-1/2 -translate-x-1/2 flex-row"
+            : cn(
+                "bottom-3 left-1/2 -translate-x-1/2 flex-row",
+                "max-md:bottom-[9.75rem] max-md:left-3 max-md:translate-x-0 max-md:flex-col",
+                "[@media(pointer:coarse)]:bottom-[9.75rem] [@media(pointer:coarse)]:left-3 [@media(pointer:coarse)]:translate-x-0 [@media(pointer:coarse)]:flex-col",
+              ),
         )}
       >
-        <div className="flex flex-row items-end gap-1 rounded-2xl bg-bg-deep/5 p-1.5 max-md:flex-col [@media(pointer:coarse)]:flex-col">
+        <div
+          className={cn(
+            "flex items-end gap-1 rounded-pixel border-2 border-fg-on-ink/15 bg-bg-deep/5 p-1",
+            land ? "flex-row" : "flex-row max-md:flex-col [@media(pointer:coarse)]:flex-col",
+          )}
+        >
           {hud.palette.map((block, i) => (
             <button
               key={block}
@@ -119,15 +160,16 @@ export function GameHud({
               aria-label={BLOCK_NAMES[block]}
               aria-pressed={hud.selected === i}
               className={cn(
-                "flex size-11 items-center justify-center rounded-xl border-2 transition-transform sm:size-12",
+                "flex size-11 items-center justify-center rounded-pixel border-2 transition-transform sm:size-12",
                 "[@media(pointer:coarse)]:size-10",
+                land && "size-10 sm:size-10",
                 hud.selected === i
-                  ? "scale-105 border-white/90 bg-white/15"
-                  : "border-transparent bg-white/5 active:scale-95",
+                  ? "scale-105 border-fg-on-ink bg-fg-on-ink/15"
+                  : "border-transparent bg-fg-on-ink/5 active:scale-95",
               )}
             >
               <span
-                className="size-6 rounded-md border border-black/25 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)] sm:size-7"
+                className="size-6 rounded-pixel border border-bg-deep/40 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)] sm:size-7"
                 style={swatchStyle(block)}
               />
             </button>
@@ -135,28 +177,123 @@ export function GameHud({
         </div>
       </div>
 
-      <p className="absolute bottom-20 left-1/2 hidden -translate-x-1/2 text-center text-[11px] text-fg-on-ink/80 md:block">
-        WASD · мышь · пробел · ЛКМ ломать · ПКМ ставить · 1–6 блоки · E/R/T
+      <p className="absolute bottom-20 left-1/2 hidden -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80 md:block [@media(pointer:coarse)]:hidden">
+        WASD · мышь · пробел · ЛКМ ломать · ПКМ ставить · 1–6 · E/R/T
       </p>
 
+      {qrOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
+          <div className="w-[min(320px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-mono text-sm uppercase tracking-widest">qr · invite</p>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="flex size-11 items-center justify-center text-muted-on-ink"
+                onClick={() => setQrOpen(false)}
+              >
+                <IconClose className="size-4" />
+              </button>
+            </div>
+            <div className="mt-3 border-2 border-fg-on-ink bg-surface p-2">
+              <QrMark value={inviteUrl} className="aspect-square w-full" />
+            </div>
+            <p className="mt-3 break-all text-center font-mono text-xs text-muted-on-ink">{hud.worldId}</p>
+            <Button
+              className="mt-4 w-full rounded-pixel font-mono uppercase tracking-wide"
+              onClick={() => {
+                onInvite();
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1600);
+              }}
+            >
+              {copied ? "ссылка скопирована" : "копировать ссылку"}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {settingsOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
+          <div className={cn("w-[min(380px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink", land && "max-h-[90dvh] overflow-y-auto")}>
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-mono text-sm uppercase tracking-widest">настройки</p>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="flex size-11 items-center justify-center text-muted-on-ink"
+                onClick={() => setSettingsOpen(false)}
+              >
+                <IconClose className="size-4" />
+              </button>
+            </div>
+            <div className="mt-5">
+              <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">ориентация</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOrient("portrait")}
+                  className={cn(
+                    "min-h-12 rounded-pixel border-2 px-3 font-mono text-xs uppercase tracking-wide",
+                    orient === "portrait"
+                      ? "border-primary bg-primary text-primary-fg"
+                      : "border-border-ink bg-bg-deep/40 text-fg-on-ink",
+                  )}
+                >
+                  книжная
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOrient("landscape")}
+                  className={cn(
+                    "min-h-12 rounded-pixel border-2 px-3 font-mono text-xs uppercase tracking-wide",
+                    orient === "landscape"
+                      ? "border-primary bg-primary text-primary-fg"
+                      : "border-border-ink bg-bg-deep/40 text-fg-on-ink",
+                  )}
+                >
+                  альбомная
+                </button>
+              </div>
+            </div>
+            {hud.isCreator && hud.playing ? (
+              <div className="mt-6 border-t-2 border-border-ink pt-5">
+                <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">остров</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setConfirmReset(true);
+                  }}
+                  className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
+                >
+                  <IconReset className="size-4" />
+                  сбросить остров
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {confirmReset ? (
-        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-bg-deep/55 px-6">
-          <div className="w-[min(400px,100%)] rounded-xl border border-border-ink bg-surface-ink p-6 text-fg-on-ink shadow-[var(--shadow-panel)]">
-            <p className="font-display text-2xl font-semibold tracking-tight">Сбросить остров?</p>
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
+          <div className="w-[min(400px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
+            <p className="font-mono text-lg uppercase tracking-wide">сбросить остров?</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
               Все поставленные блоки исчезнут. Остров станет таким, каким был в начале.
             </p>
             <div className="mt-5 flex flex-col gap-2 sm:flex-row">
               <Button
                 variant="ghost"
-                className="flex-1 border border-border-ink"
+                className="flex-1 rounded-pixel border-2 border-border-ink font-mono uppercase"
                 disabled={resetting}
                 onClick={() => setConfirmReset(false)}
               >
-                Отмена
+                отмена
               </Button>
               <Button
-                className="flex-1 bg-danger text-primary-fg"
+                className="flex-1 rounded-pixel bg-danger font-mono uppercase text-primary-fg"
                 disabled={resetting}
                 onClick={() => {
                   setResetting(true);
@@ -166,7 +303,7 @@ export function GameHud({
                   });
                 }}
               >
-                {resetting ? "Сбрасываем…" : "Сбросить"}
+                {resetting ? "сбрасываем…" : "сбросить"}
               </Button>
             </div>
           </div>

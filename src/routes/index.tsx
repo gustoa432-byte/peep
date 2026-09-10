@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Send, Smartphone, Trash2, X } from "lucide-react";
+import { IconClose, IconPhone, IconSend, IconTrash } from "@/components/peep/peep-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getPlayerId, parseWorldId } from "@/lib/peep/player-id";
@@ -91,7 +91,7 @@ function Home() {
 
       <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-16">
         <div className="flex flex-1 flex-col justify-center">
-        <p className="font-display text-sm font-medium tracking-wide text-muted">voxel · together</p>
+        <p className="font-mono text-xs font-medium uppercase tracking-widest text-muted">voxel · together</p>
         <h1 className="mt-3 font-display text-6xl font-semibold leading-none tracking-tight md:text-7xl">
           Peep
         </h1>
@@ -104,12 +104,12 @@ function Home() {
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
           <Button size="lg" className="min-h-12 flex-1" onClick={() => void onCreate()} disabled={busy}>
-            {busy ? "Создаём…" : "Create World"}
+            {busy ? "создаём…" : "создать мир"}
           </Button>
         </div>
 
         <form onSubmit={(e) => void onJoin(e)} className="mt-8">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Join World</p>
+          <p className="mb-2 font-mono text-xs font-medium uppercase tracking-widest text-muted">войти в мир</p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={join}
@@ -122,17 +122,17 @@ function Home() {
               className="font-mono"
             />
             <Button type="submit" variant="ink" className="sm:w-36">
-              Войти
+              войти
             </Button>
           </div>
         </form>
 
         {worlds.length > 0 ? (
           <section className="mt-8">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Мои миры</p>
+            <p className="mb-2 font-mono text-xs font-medium uppercase tracking-widest text-muted">мои миры</p>
             <ul className="flex flex-col gap-2">
               {worlds.map((w) => (
-                <li key={w.id} className="rounded-lg border border-border bg-surface shadow-[var(--shadow-panel)]">
+                <li key={w.id} className="rounded-pixel border-2 border-border bg-surface shadow-[var(--shadow-panel)]">
                   {confirmId === w.id ? (
                     <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
                       <p className="min-w-0 flex-1 text-sm leading-snug text-fg">
@@ -176,7 +176,7 @@ function Home() {
                         onClick={() => setConfirmId(w.id)}
                         className="flex size-12 shrink-0 items-center justify-center text-muted hover:text-danger"
                       >
-                        <Trash2 className="size-4" strokeWidth={2} />
+                        <IconTrash className="size-4" />
                       </button>
                     </div>
                   )}
@@ -187,8 +187,8 @@ function Home() {
         ) : null}
 
         {nudge ? (
-          <aside className="mt-8 flex items-start gap-3 rounded-xl border border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
-            <Smartphone className="mt-0.5 size-5 shrink-0 text-primary" strokeWidth={2} />
+          <aside className="mt-8 flex items-start gap-3 rounded-pixel border-2 border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
+            <IconPhone className="mt-0.5 size-5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
               <p className="font-display text-base font-semibold leading-tight">Иконка на телефоне</p>
               <p className="mt-1 text-sm leading-relaxed text-muted">
@@ -205,9 +205,9 @@ function Home() {
               type="button"
               onClick={hideNudge}
               aria-label="Закрыть"
-              className="flex size-11 shrink-0 items-center justify-center rounded-md text-muted"
+              className="flex size-11 shrink-0 items-center justify-center rounded-pixel text-muted"
             >
-              <X className="size-4" strokeWidth={2} />
+              <IconClose className="size-4" />
             </button>
           </aside>
         ) : null}
@@ -232,14 +232,14 @@ function Home() {
         </div>
 
         <footer className="mt-14 border-t border-border pt-5 pb-10">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Контакты</p>
+          <p className="mb-2 font-mono text-xs font-medium uppercase tracking-widest text-muted">контакты</p>
           <a
             href="https://t.me/peep_gm"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-fg hover:text-primary"
+            className="inline-flex min-h-11 items-center gap-2 font-mono text-sm uppercase tracking-wide text-fg hover:text-primary"
           >
-            <Send className="size-4" strokeWidth={2} />
+            <IconSend className="size-4" />
             Telegram
           </a>
         </footer>

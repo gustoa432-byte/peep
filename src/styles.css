@@ -21,14 +21,15 @@
   --color-block-leaf: #3fa83c;
   --color-danger: #a33b2a;
   --font-display: "Syne", "Segoe UI", system-ui, sans-serif;
-  --font-sans: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
-  --shadow-panel: 0 12px 40px rgb(26 22 18 / 0.14);
+  --radius-pixel: 2px;
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --shadow-panel: 4px 4px 0 rgb(26 22 18 / 0.22);
 }
 
 @layer base {
@@ -42,8 +43,9 @@
     margin: 0;
     background: var(--color-bg);
     color: var(--color-fg);
-    font-family: var(--font-sans);
+    font-family: var(--font-mono);
     font-feature-settings: "ss01" on;
+    -webkit-font-smoothing: antialiased;
   }
 
   button:not(:disabled),
