@@ -23,8 +23,10 @@ export type HudState = {
   playing: boolean;
   worldId: string;
   isCreator: boolean;
-  /** 0–1 while holding to place; 0 otherwise. */
+  /** 0–1 while holding the second tap to place; 0 otherwise. */
   placeCharge: number;
+  /** True after the first tap, before the hold starts or expires. */
+  placeIntent: boolean;
   /** 0–1 while holding the break control; 0 otherwise. */
   breakCharge: number;
 };

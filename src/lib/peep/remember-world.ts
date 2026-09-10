@@ -56,12 +56,13 @@ export function shouldShowInstallNudge(): boolean {
   if (typeof window === "undefined") return false;
   try {
     if (localStorage.getItem(NUDGE_KEY) === "1") return false;
-    if (localStorage.getItem(SESSION_KEY) !== "1") return false;
-    if (readList().length === 0) return false;
     const nav = navigator as Navigator & { standalone?: boolean };
     if (nav.standalone) return false;
     if (window.matchMedia("(display-mode: standalone)").matches) return false;
-    if (!/iphone|ipad|ipod|android/i.test(navigator.userAgent)) return false;
+    if (window.matchMedia("(display-mode: fullscreen)").matches) return false;
+    if (!/iphone|ipad|ipod|android/i.test(navigator.userAgent) && !window.matchMedia("(pointer: coarse)").matches) {
+      return false;
+    }
     return true;
   } catch {
     return false;

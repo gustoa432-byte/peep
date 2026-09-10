@@ -52,7 +52,10 @@ export function unlockOrient() {
 }
 
 export function useMatchMedia(query: string) {
-  const [hit, setHit] = useState(false);
+  const [hit, setHit] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia(query).matches;
+  });
   useEffect(() => {
     const media = window.matchMedia(query);
     const sync = () => setHit(media.matches);
@@ -61,4 +64,11 @@ export function useMatchMedia(query: string) {
     return () => media.removeEventListener("change", sync);
   }, [query]);
   return hit;
+}
+
+/** Phone or narrow viewport — orientation lock/HUD never apply on desktop. */
+export function usePhoneUi() {
+  const coarse = useMatchMedia("(pointer: coarse)");
+  const narrow = useMatchMedia("(max-width: 767px)");
+  return coarse || narrow;
 }

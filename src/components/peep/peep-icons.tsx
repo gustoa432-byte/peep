@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function Pixel({
@@ -60,10 +61,22 @@ export function IconQr({ className }: { className?: string }) {
 }
 
 export function IconGear({ className }: { className?: string }) {
+  return <Settings className={cn("size-4 shrink-0", className)} strokeWidth={2} aria-hidden />;
+}
+
+export function IconFullscreen({ className }: { className?: string }) {
   return (
-    <Pixel className={className}>
-      <Dots cells="M7 1h2v2h2v1h2v2h-1v2h1v2h-2v1H9v2H7v-2H5v-1H3v-2h1V8H3V6h2V5h2V1zM6 6v4h4V6H6z" />
-    </Pixel>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cn("size-4 shrink-0", className)} aria-hidden>
+      <path strokeLinecap="square" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+    </svg>
+  );
+}
+
+export function IconFullscreenExit({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={cn("size-4 shrink-0", className)} aria-hidden>
+      <path strokeLinecap="square" d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+    </svg>
   );
 }
 
