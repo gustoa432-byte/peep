@@ -151,7 +151,16 @@ export function GameHud({
         </div>
       </div>
 
-      <div className="absolute top-1/2 left-1/2 z-10 -translate-x-1/2 -translate-y-1/2">
+      <div
+        aria-hidden
+        className="pointer-events-none z-10"
+        style={{
+          position: "absolute",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+        }}
+      >
         <svg viewBox="0 0 36 36" className="size-9 -rotate-90" aria-hidden>
           {hud.placeIntent && hud.placeCharge === 0 ? (
             <circle cx="18" cy="18" r="14" fill="none" className="stroke-primary/70" strokeWidth="2" strokeDasharray="3 4" />
@@ -169,11 +178,27 @@ export function GameHud({
             />
           ) : null}
         </svg>
-        <div className="absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2">
+        <div
+          className="pointer-events-none"
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            width: 12,
+            height: 12,
+            transform: "translate(-50%, -50%)",
+          }}
+        >
           <div className="absolute top-0 left-1/2 h-full w-px -translate-x-1/2 bg-fg-on-ink" />
           <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-fg-on-ink" />
         </div>
       </div>
+
+      {hud.playing && !hud.locked && !phone ? (
+        <p className="pointer-events-none absolute top-1/2 left-1/2 z-10 mt-8 -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80">
+          кликните в мир
+        </p>
+      ) : null}
 
       <div
         className={cn(

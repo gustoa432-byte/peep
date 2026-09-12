@@ -21,6 +21,8 @@ export type HudState = {
   peerCount: number;
   peerConnected: boolean;
   playing: boolean;
+  /** Desktop: true only while the canvas owns Pointer Lock. */
+  locked: boolean;
   worldId: string;
   isCreator: boolean;
   /** 0–1 while holding the second tap to place; 0 otherwise. */

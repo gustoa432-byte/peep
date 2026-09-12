@@ -641,19 +641,19 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.onMouseMove = this.onMouseMove.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
-    this.onPointerMove = this.onPointerMove.bind(this);
     this.onContext = this.onContext.bind(this);
     this.onWheel = this.onWheel.bind(this);
     this.onBlur = this.onBlur.bind(this);
     this.onLock = this.onLock.bind(this);
+    this.onCanvasClick = this.onCanvasClick.bind(this);
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
     window.addEventListener("blur", this.onBlur);
     document.addEventListener("pointerlockchange", this.onLock);
-    c.addEventListener("mousemove", this.onMouseMove);
+    document.addEventListener("mousemove", this.onMouseMove);
+    c.addEventListener("click", this.onCanvasClick);
     c.addEventListener("pointerdown", this.onPointerDown);
     window.addEventListener("pointerup", this.onPointerUp);
-    c.addEventListener("pointermove", this.onPointerMove);
     c.addEventListener("contextmenu", this.onContext);
     c.addEventListener("wheel", this.onWheel, { passive: true });
     this.resizeObs = new ResizeObserver(() => this.resize());
@@ -666,10 +666,10 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
     document.removeEventListener("pointerlockchange", this.onLock);
-    c.removeEventListener("mousemove", this.onMouseMove);
+    document.removeEventListener("mousemove", this.onMouseMove);
+    c.removeEventListener("click", this.onCanvasClick);
     c.removeEventListener("pointerdown", this.onPointerDown);
     window.removeEventListener("pointerup", this.onPointerUp);
-    c.removeEventListener("pointermove", this.onPointerMove);
     c.removeEventListener("contextmenu", this.onContext);
     c.removeEventListener("wheel", this.onWheel);
   }
@@ -709,13 +709,36 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.endBreak();
   }
 
+  private isLocked(): boolean {
+    return document.pointerLockElement === this.opts.canvas;
+  }
+
+  private wantsDesktopLock(): boolean {
+    return window.matchMedia("(pointer: fine)").matches;
+  }
+
   private onLock() {
-    this.pointerLocked = document.pointerLockElement === this.opts.canvas;
+    this.pointerLocked = this.isLocked();
+    this.opts.canvas.style.cursor = this.pointerLocked ? "none" : "default";
+    if (!this.pointerLocked) {
+      this.dragging = false;
+      this.endPlace();
+      this.endBreak();
+    }
     this.hudDirty = true;
   }
 
+  private onCanvasClick(e: MouseEvent) {
+    if (!this.playing || this.cinematic) return;
+    if (e.button !== 0) return;
+    if (!this.wantsDesktopLock()) return;
+    if (this.isLocked()) return;
+    this.tryLock();
+  }
+
   private onMouseMove(e: MouseEvent) {
-    if (!this.playing || !this.pointerLocked || this.cinematic) return;
+    if (!this.playing || this.cinematic) return;
+    if (document.pointerLockElement !== this.opts.canvas) return;
     this.yaw -= e.movementX * LOOK_SENS;
     this.pitch -= e.movementY * LOOK_SENS;
     this.pitch = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, this.pitch));
@@ -731,8 +754,11 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     if (!this.playing) return;
     if (e.button > 2) return;
     // Phone/tablet: look and break/place live on the pads, not the canvas.
-    // A canvas drag here steals the right thumb and taps become accidental breaks.
     if (e.pointerType === "touch") return;
+    if (!this.isLocked()) {
+      if (this.wantsDesktopLock()) this.tryLock();
+      return;
+    }
     this.ptrButton = e.button;
     this.ptrStartX = e.clientX;
     this.ptrStartY = e.clientY;
@@ -740,37 +766,12 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.lastPtrY = e.clientY;
     this.ptrMoved = false;
     this.tapSlop = 6;
-    if (this.pointerLocked) {
-      if (e.button === 0) this.beginBreak();
-      if (e.button === 2) this.beginPlace();
-      return;
-    }
-    this.dragging = true;
     if (e.button === 0) this.beginBreak();
     if (e.button === 2) this.beginPlace();
-    try {
-      this.opts.canvas.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  }
-
-  private onPointerMove(e: PointerEvent) {
-    if (!this.playing || this.pointerLocked || !this.dragging || this.cinematic) return;
-    const dx = e.clientX - this.lastPtrX;
-    const dy = e.clientY - this.lastPtrY;
-    this.lastPtrX = e.clientX;
-    this.lastPtrY = e.clientY;
-    if (Math.hypot(e.clientX - this.ptrStartX, e.clientY - this.ptrStartY) > this.tapSlop) {
-      this.ptrMoved = true;
-      this.endPlace();
-      this.endBreak();
-    }
-    this.lookDelta(dx, dy);
   }
 
   private onPointerUp(e: PointerEvent) {
-    if (this.pointerLocked) {
+    if (this.isLocked()) {
       if (e.button === 0) this.endBreak();
       if (e.button === 2) this.endPlace();
     }
@@ -1776,6 +1777,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       peerCount: this.peerCount,
       peerConnected: this.peerConnected || this.remotes.size > 0,
       playing: this.playing,
+      locked: this.isLocked(),
       worldId: this.opts.worldId,
       isCreator: this.opts.isCreator,
       placeCharge: this.placeCharge,

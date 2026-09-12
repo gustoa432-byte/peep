@@ -30,6 +30,7 @@ const EMPTY_HUD: HudState = {
   peerCount: 1,
   peerConnected: false,
   playing: false,
+  locked: false,
   worldId: "",
   isCreator: false,
   placeCharge: 0,
