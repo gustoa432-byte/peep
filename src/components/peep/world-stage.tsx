@@ -11,6 +11,8 @@ import {
   toggleFullscreen,
 } from "@/lib/peep/fullscreen";
 import { PeepGame } from "@/lib/peep/game";
+import { startLazySave } from "@/lib/peep/lazy-save";
+import { getTelegramSaveId } from "@/lib/peep/player-id";
 import { markSessionDone, placedBlockCount, recordPlacedBlock } from "@/lib/peep/remember-world";
 import {
   lockOrient,
@@ -19,6 +21,8 @@ import {
   useMatchMedia,
   usePhoneUi,
 } from "@/lib/peep/settings";
+import { initTelegramWebApp } from "@/lib/peep/telegram";
+import type { Story } from "@/lib/peep/progress";
 import { leaveWorld, trackEvent } from "@/lib/peep/world.functions";
 import type { BlockEdit, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
@@ -35,6 +39,7 @@ const EMPTY_HUD: HudState = {
   placeCharge: 0,
   placeIntent: false,
   breakCharge: 0,
+  chestBar: null,
   counts: [0, 0, 0, 0, 0, 0],
   fridayUnlocked: false,
   hatPrompt: false,
@@ -50,6 +55,7 @@ export function WorldStage({
   generation,
   isCreator,
   playerId,
+  inventoryOverride = null,
 }: {
   worldId: string;
   seed: number;
@@ -58,10 +64,12 @@ export function WorldStage({
   generation: number;
   isCreator: boolean;
   playerId: string;
+  inventoryOverride?: Story | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<PeepGame | null>(null);
+  const lazyRef = useRef<ReturnType<typeof startLazySave> | null>(null);
   const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, worldId, isCreator });
   const [lost, setLost] = useState(false);
   const [placed, setPlaced] = useState(placedBlockCount);
@@ -69,6 +77,7 @@ export function WorldStage({
   const [skipRotate, setSkipRotate] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [fsHint, setFsHint] = useState<string | null>(null);
+  const [saveHint, setSaveHint] = useState<string | null>(null);
   const phone = usePhoneUi();
   const coarse = useMatchMedia("(pointer: coarse)");
   const viewLand = useMatchMedia("(orientation: landscape)");
@@ -78,6 +87,10 @@ export function WorldStage({
     phone &&
     !skipRotate &&
     ((orient === "landscape" && !viewLand) || (orient === "portrait" && viewLand));
+
+  useEffect(() => {
+    initTelegramWebApp();
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -91,18 +104,42 @@ export function WorldStage({
       generation,
       isCreator,
       playerId,
+      inventoryOverride,
       onHud: setHud,
       onLost: () => setLost(true),
       onPlaced: () => setPlaced(recordPlacedBlock()),
+      onWorldDirty: () => lazyRef.current?.markDirty(),
     });
     gameRef.current = game;
+
+    const tg = getTelegramSaveId();
+    if (tg) {
+      lazyRef.current = startLazySave(() => game.serializeWorld());
+      void lazyRef.current.flush();
+    }
+
     return () => {
+      lazyRef.current?.stop();
+      lazyRef.current = null;
       game.dispose();
       gameRef.current = null;
       markSessionDone();
       void leaveWorld({ data: { worldId, playerId } });
     };
-  }, [worldId, seed, edits, cursor, generation, isCreator, playerId]);
+  }, [worldId, seed, edits, cursor, generation, isCreator, playerId, inventoryOverride]);
+
+  const onSaveWorld = async () => {
+    const lazy = lazyRef.current;
+    if (!lazy) {
+      setSaveHint("Сохранение доступно в Telegram Mini App");
+      window.setTimeout(() => setSaveHint(null), 2800);
+      return;
+    }
+    setSaveHint("сохраняем…");
+    const ok = await lazy.flush();
+    setSaveHint(ok ? "мир сохранён" : "не удалось сохранить");
+    window.setTimeout(() => setSaveHint(null), 2200);
+  };
 
   useEffect(() => {
     if (!phone) {
@@ -167,6 +204,8 @@ export function WorldStage({
         onDismissChest={() => gameRef.current?.dismissChest()}
         onEmote={(kind) => gameRef.current?.playEmote(kind)}
         onReset={() => gameRef.current?.resetIsland() ?? Promise.resolve(false)}
+        onSaveWorld={() => void onSaveWorld()}
+        saveHint={saveHint}
         fullscreen={fullscreen}
         onFullscreen={() => void onFullscreen()}
       />

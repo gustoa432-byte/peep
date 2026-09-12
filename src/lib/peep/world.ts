@@ -242,6 +242,16 @@ export class VoxelWorld {
     this.set(CHEST_X, CHEST_Y, CHEST_Z, AIR);
   }
 
+  /** Diff vs procedural landscape — only voxels touched by players. */
+  listEdits(): BlockEdit[] {
+    const out: BlockEdit[] = [];
+    for (const [k, block] of this.edits) {
+      const [xs, ys, zs] = k.split(",");
+      out.push({ x: Number(xs), y: Number(ys), z: Number(zs), block });
+    }
+    return out;
+  }
+
   spawn(): { x: number; y: number; z: number } {
     const x = Math.floor(WORLD_SX / 2);
     const z = Math.floor(WORLD_SZ / 2);

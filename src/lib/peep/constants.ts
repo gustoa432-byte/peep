@@ -89,6 +89,8 @@ export const PLACE_DOUBLE_MS = 280;
 export const PLACE_HOLD_CONFIRM_MS = 70;
 export const PLACE_HOLD_S = 0.45;
 export const BREAK_HOLD_S = 0.3;
+/** Opening the buried chest is a long hold — not a normal dig. */
+export const CHEST_CRAFT_S = 30;
 /** After a place/break, wait a random beat before the next one can start. */
 export const EDIT_REPEAT_DELAY_MIN_S = 0.2;
 export const EDIT_REPEAT_DELAY_MAX_S = 0.3;

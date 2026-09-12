@@ -31,6 +31,14 @@ export type HudState = {
   placeIntent: boolean;
   /** 0–1 while holding the break control; 0 otherwise. */
   breakCharge: number;
+  /** Screen-space HP + craft bars over the buried chest, or null. */
+  chestBar: {
+    x: number;
+    y: number;
+    hp: number;
+    craft: number;
+    crafting: boolean;
+  } | null;
   /** Counts for each palette slot — you place what you dug. */
   counts: readonly number[];
   fridayUnlocked: boolean;

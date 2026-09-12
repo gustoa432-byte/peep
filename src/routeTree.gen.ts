@@ -14,6 +14,8 @@ import { Route as EditorRouteImport } from './routes/editor'
 import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as WorldWorldIdRouteImport } from './routes/world.$worldId'
+import { Route as ApiWorldLoadRouteImport } from './routes/api/world/load'
+import { Route as ApiWorldSaveRouteImport } from './routes/api/world/save'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +42,16 @@ const WorldWorldIdRoute = WorldWorldIdRouteImport.update({
   path: '/world/$worldId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWorldLoadRoute = ApiWorldLoadRouteImport.update({
+  id: '/api/world/load',
+  path: '/api/world/load',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorldSaveRoute = ApiWorldSaveRouteImport.update({
+  id: '/api/world/save',
+  path: '/api/world/save',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +59,8 @@ export interface FileRoutesByFullPath {
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
+  '/api/world/load': typeof ApiWorldLoadRoute
+  '/api/world/save': typeof ApiWorldSaveRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +68,8 @@ export interface FileRoutesByTo {
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
+  '/api/world/load': typeof ApiWorldLoadRoute
+  '/api/world/save': typeof ApiWorldSaveRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +78,37 @@ export interface FileRoutesById {
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
+  '/api/world/load': typeof ApiWorldLoadRoute
+  '/api/world/save': typeof ApiWorldSaveRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
+  fullPaths:
+    | '/'
+    | '/editor'
+    | '/healthz'
+    | '/api/rtc'
+    | '/world/$worldId'
+    | '/api/world/load'
+    | '/api/world/save'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
-  id: '__root__' | '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
+  to:
+    | '/'
+    | '/editor'
+    | '/healthz'
+    | '/api/rtc'
+    | '/world/$worldId'
+    | '/api/world/load'
+    | '/api/world/save'
+  id:
+    | '__root__'
+    | '/'
+    | '/editor'
+    | '/healthz'
+    | '/api/rtc'
+    | '/world/$worldId'
+    | '/api/world/load'
+    | '/api/world/save'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,6 +117,8 @@ export interface RootRouteChildren {
   HealthzRoute: typeof HealthzRoute
   ApiRtcRoute: typeof ApiRtcRoute
   WorldWorldIdRoute: typeof WorldWorldIdRoute
+  ApiWorldLoadRoute: typeof ApiWorldLoadRoute
+  ApiWorldSaveRoute: typeof ApiWorldSaveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -116,6 +158,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorldWorldIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/world/load': {
+      id: '/api/world/load'
+      path: '/api/world/load'
+      fullPath: '/api/world/load'
+      preLoaderRoute: typeof ApiWorldLoadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/world/save': {
+      id: '/api/world/save'
+      path: '/api/world/save'
+      fullPath: '/api/world/save'
+      preLoaderRoute: typeof ApiWorldSaveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -125,6 +181,8 @@ const rootRouteChildren: RootRouteChildren = {
   HealthzRoute: HealthzRoute,
   ApiRtcRoute: ApiRtcRoute,
   WorldWorldIdRoute: WorldWorldIdRoute,
+  ApiWorldLoadRoute: ApiWorldLoadRoute,
+  ApiWorldSaveRoute: ApiWorldSaveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

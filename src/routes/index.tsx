@@ -4,7 +4,8 @@ import { IconClose, IconGear, IconPhone, IconSend, IconTrash } from "@/component
 import { OrientPicker } from "@/components/peep/orient-picker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getPlayerId, parseWorldId } from "@/lib/peep/player-id";
+import { loadWorldFromServer } from "@/lib/peep/lazy-save";
+import { getPlayerId, getTelegramSaveId, parseWorldId } from "@/lib/peep/player-id";
 import {
   dismissInstallNudge,
   forgetWorld,
@@ -14,6 +15,8 @@ import {
 } from "@/lib/peep/remember-world";
 import { useInstallPrompt } from "@/lib/peep/install";
 import { readOrient, usePhoneUi, type OrientMode } from "@/lib/peep/settings";
+import { initTelegramWebApp } from "@/lib/peep/telegram";
+import { stashTelegramInventory } from "@/lib/peep/tg-boot-cache";
 import { createWorld, deleteWorld } from "@/lib/peep/world.functions";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -29,6 +32,7 @@ function Home() {
   const [removing, setRemoving] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [orient, setOrient] = useState<OrientMode>(readOrient);
+  const [tgBoot, setTgBoot] = useState(false);
   const phone = usePhoneUi();
   const install = useInstallPrompt();
 
@@ -36,6 +40,39 @@ function Home() {
     setWorlds(listSavedWorlds());
     setNudge(shouldShowInstallNudge());
   }, []);
+
+  /** Telegram Mini App: load personal snapshot or create a fresh island. */
+  useEffect(() => {
+    initTelegramWebApp();
+    const tg = getTelegramSaveId();
+    if (!tg) return;
+    let cancelled = false;
+    setTgBoot(true);
+    setBusy(true);
+    void (async () => {
+      try {
+        const snap = await loadWorldFromServer(tg);
+        if (cancelled) return;
+        if (snap.ok && !snap.empty && snap.world_id) {
+          stashTelegramInventory(snap.world_id, snap.inventory);
+          await navigate({ to: "/world/$worldId", params: { worldId: snap.world_id } });
+          return;
+        }
+        const world = await createWorld({ data: { playerId: getPlayerId() } });
+        if (cancelled) return;
+        await navigate({ to: "/world/$worldId", params: { worldId: world.id } });
+      } catch {
+        if (!cancelled) {
+          setError("Не удалось загрузить мир из Telegram. Попробуйте ещё раз.");
+          setBusy(false);
+          setTgBoot(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const onCreate = async () => {
     setBusy(true);
@@ -119,6 +156,11 @@ function Home() {
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
           Один маленький мир. Два человека. Несколько блоков. Одна ссылка.
         </p>
+        {tgBoot ? (
+          <p className="mt-6 font-mono text-sm uppercase tracking-wide text-muted">
+            Telegram · загружаем остров…
+          </p>
+        ) : null}
         </div>
 
         <div className="min-h-24 flex-1" aria-hidden />
