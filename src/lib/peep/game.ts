@@ -17,11 +17,20 @@ import {
 import { PeepAudio } from "./audio";
 import {
   AIR,
+  BHOP_AIR_CONTROL,
+  BHOP_AIR_CROUCH_GRAVITY,
+  BHOP_MAX,
+  BHOP_STEP,
+  BHOP_WALL_SPEED_FRAC,
+  BHOP_WINDOW_S,
   BLOCK_COLORS,
   BLOCK_PALETTE,
   BREAK_HOLD_S,
   CHEST,
   CHUNK_S,
+  CROUCH_EYE_HEIGHT,
+  CROUCH_HEIGHT,
+  CROUCH_SPEED_MUL,
   EYE_HEIGHT,
   FOG_COLOR,
   FOG_FAR,
@@ -224,6 +233,11 @@ export class PeepGame {
   private pos = new THREE.Vector3();
   private vel = new THREE.Vector3();
   private onGround = false;
+  private bhopMultiplier = 1;
+  private jumpBuffer = 0;
+  private landWindow = 0;
+  private crouching = false;
+  private crouchHeld = false;
   /** Touch stick axis: +x strafes right, +z walks forward. Additive with WASD. */
   private moveX = 0;
   private moveZ = 0;
@@ -548,11 +562,58 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   jump() {
     if (!this.playing || this.cinematic) return;
-    if (this.onGround) {
-      this.vel.y = JUMP_SPEED;
-      this.onGround = false;
-      this.audio.jump();
+    this.jumpBuffer = BHOP_WINDOW_S;
+    this.tryBunnyJump();
+  }
+
+  /** Mobile / overlay crouch hold. Desktop also uses Ctrl/Shift. */
+  setCrouch(on: boolean) {
+    this.crouchHeld = on;
+  }
+
+  private tryBunnyJump(): boolean {
+    if (!this.playing || this.cinematic) return false;
+    const canJump = this.onGround || this.landWindow > 0;
+    if (!canJump || this.jumpBuffer <= 0) return false;
+
+    const rhythmic = this.landWindow > 0 || (!this.onGround && this.jumpBuffer > 0);
+    if (rhythmic && this.bhopMultiplier > 1 - 1e-6) {
+      this.bhopMultiplier = Math.min(BHOP_MAX, this.bhopMultiplier + BHOP_STEP);
+    } else if (rhythmic) {
+      this.bhopMultiplier = Math.min(BHOP_MAX, 1 + BHOP_STEP);
     }
+
+    const horiz = Math.hypot(this.vel.x, this.vel.z);
+    const wish = Math.max(horiz, WALK_SPEED * this.bhopMultiplier);
+    if (horiz > 0.05) {
+      const s = wish / horiz;
+      this.vel.x *= s;
+      this.vel.z *= s;
+    }
+
+    this.vel.y = JUMP_SPEED;
+    this.onGround = false;
+    this.jumpBuffer = 0;
+    this.landWindow = 0;
+    this.audio.jump();
+    return true;
+  }
+
+  private playerHeight(): number {
+    return this.crouching ? CROUCH_HEIGHT : PLAYER_HEIGHT;
+  }
+
+  private eyeHeight(): number {
+    return this.crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+  }
+
+  private updateCrouchState() {
+    const keyCrouch =
+      this.held("ControlLeft") ||
+      this.held("ControlRight") ||
+      this.held("ShiftLeft") ||
+      this.held("ShiftRight");
+    this.crouching = this.crouchHeld || keyCrouch;
   }
 
   playEmote(kind: EmoteKind) {
@@ -701,7 +762,9 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       return;
     }
     this.keys.add(e.code);
-    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space"].includes(e.code)) e.preventDefault();
+    if (["KeyW", "KeyA", "KeyS", "KeyD", "Space", "ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight"].includes(e.code)) {
+      e.preventDefault();
+    }
   }
 
   private onKeyUp(e: KeyboardEvent) {
@@ -984,6 +1047,10 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       return;
     }
 
+    this.updateCrouchState();
+    if (this.jumpBuffer > 0) this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
+    if (this.landWindow > 0) this.landWindow = Math.max(0, this.landWindow - dt);
+
     // Yaw 0 looks down -Z, so forward is (-sin, -cos) and right is (cos, -sin).
     // Keep the pair in this order: swapping it is what inverts A/D.
     const fwdX = -Math.sin(this.yaw);
@@ -991,8 +1058,6 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     const rightX = Math.cos(this.yaw);
     const rightZ = -Math.sin(this.yaw);
 
-    // Keyboard is digital, the stick is analog; both write the same two
-    // scalars so movement has exactly one code path.
     let fwd = 0;
     let strafe = 0;
     if (this.held("KeyW") || this.held("ArrowUp")) fwd += 1;
@@ -1008,18 +1073,67 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       strafe /= mag;
     }
 
-    this.vel.x = (fwdX * fwd + rightX * strafe) * WALK_SPEED;
-    this.vel.z = (fwdZ * fwd + rightZ * strafe) * WALK_SPEED;
-    this.vel.y -= GRAVITY * dt;
+    const wishX = fwdX * fwd + rightX * strafe;
+    const wishZ = fwdZ * fwd + rightZ * strafe;
+    const groundSpeed =
+      WALK_SPEED * this.bhopMultiplier * (this.crouching ? CROUCH_SPEED_MUL : 1);
+
+    if (this.held("Space")) this.jumpBuffer = Math.max(this.jumpBuffer, BHOP_WINDOW_S * 0.5);
+
     const wasGround = this.onGround;
     const fallSpeed = this.vel.y;
-    if (this.onGround && this.held("Space")) this.jump();
+    const speedBefore = Math.hypot(this.vel.x, this.vel.z);
+
+    if (this.onGround) {
+      this.vel.y -= GRAVITY * dt;
+      if (!this.tryBunnyJump()) {
+        this.vel.x = wishX * groundSpeed;
+        this.vel.z = wishZ * groundSpeed;
+      }
+    } else {
+      // Air: keep momentum, steer gently; crouch softens gravity for long jumps.
+      if (mag > 0.05) {
+        const airSpeed = WALK_SPEED * this.bhopMultiplier;
+        this.vel.x += wishX * airSpeed * BHOP_AIR_CONTROL * dt;
+        this.vel.z += wishZ * airSpeed * BHOP_AIR_CONTROL * dt;
+        const cap = airSpeed * 1.35;
+        const hz = Math.hypot(this.vel.x, this.vel.z);
+        if (hz > cap) {
+          this.vel.x = (this.vel.x / hz) * cap;
+          this.vel.z = (this.vel.z / hz) * cap;
+        }
+      }
+      const gMul = this.crouching ? BHOP_AIR_CROUCH_GRAVITY : 1;
+      this.vel.y -= GRAVITY * gMul * dt;
+      this.tryBunnyJump();
+    }
+
     this.collide(dt);
-    if (!wasGround && this.onGround && fallSpeed < -3) this.audio.land(this.groundBlock());
+
+    const speedAfter = Math.hypot(this.vel.x, this.vel.z);
+    if (speedBefore > WALK_SPEED * 0.85 && speedAfter < speedBefore * BHOP_WALL_SPEED_FRAC) {
+      this.bhopMultiplier = 1;
+    }
+
+    if (!wasGround && this.onGround) {
+      this.landWindow = BHOP_WINDOW_S;
+      if (fallSpeed < -3) this.audio.land(this.groundBlock());
+      if (this.jumpBuffer > 0 || this.held("Space")) {
+        this.tryBunnyJump();
+      } else {
+        // Missed the window → dump speed stack next frame after timer expires.
+      }
+    }
+
+    if (this.onGround && this.landWindow <= 0 && this.jumpBuffer <= 0 && !this.held("Space")) {
+      this.bhopMultiplier = 1;
+    }
+
     if (this.pos.y < -6) {
       const s = this.world.spawn();
       this.pos.set(s.x, s.y, s.z);
       this.vel.set(0, 0, 0);
+      this.bhopMultiplier = 1;
     }
     const moving = mag > 0.05 && this.onGround;
     this.bob += moving ? dt * 8 : -this.bob * dt * 6;
@@ -1054,7 +1168,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private resolveAxis(axis: "x" | "y" | "z") {
     const r = PLAYER_RADIUS;
-    const h = PLAYER_HEIGHT;
+    const h = this.playerHeight();
     const minX = Math.floor(this.pos.x - r);
     const maxX = Math.floor(this.pos.x + r);
     const minY = Math.floor(this.pos.y);
@@ -1118,7 +1232,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       }
     }
     const bobY = Math.sin(this.bob) * 0.04;
-    const eye = this.pos.y + EYE_HEIGHT + bobY;
+    const eye = this.pos.y + this.eyeHeight() + bobY;
     if (this.cinematic) {
       const u = Math.min(1, this.cinematic.t / 4.2);
       const pull = u < 0.18 ? u / 0.18 : u > 0.82 ? 1 - (u - 0.82) / 0.18 : 1;
@@ -1393,7 +1507,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     const px0 = this.pos.x - r;
     const px1 = this.pos.x + r;
     const py0 = this.pos.y;
-    const py1 = this.pos.y + PLAYER_HEIGHT;
+    const py1 = this.pos.y + this.playerHeight();
     const pz0 = this.pos.z - r;
     const pz1 = this.pos.z + r;
     return px1 > x && px0 < x + 1 && py1 > y && py0 < y + 1 && pz1 > z && pz0 < z + 1;

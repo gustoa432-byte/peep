@@ -22,7 +22,7 @@ export const GOLD = 8;
 
 export const BLOCK_COUNT = 8;
 
-export const BLOCK_NAMES = ["", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
+export const BLOCK_NAMES = ["Air", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
 
 /** Buildable types. Counts start at zero — you place what you dig. */
 export const BLOCK_PALETTE = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
@@ -40,11 +40,22 @@ export const WORLD_EDIT_LIM = 4095;
 export const MAX_PLAYERS = 2;
 export const REACH = 6;
 export const EYE_HEIGHT = 1.62;
+export const CROUCH_EYE_HEIGHT = 1.15;
 export const PLAYER_RADIUS = 0.3;
 export const PLAYER_HEIGHT = 1.72;
+export const CROUCH_HEIGHT = 1.15;
 export const WALK_SPEED = 4.6;
+export const CROUCH_SPEED_MUL = 0.42;
 export const JUMP_SPEED = 8.2;
 export const GRAVITY = 23;
+/** CS-style bunnyhop: timing window around landing, speed stack, hard cap. */
+export const BHOP_WINDOW_S = 0.12;
+export const BHOP_STEP = 0.2;
+export const BHOP_MAX = 2.5;
+export const BHOP_AIR_CONTROL = 0.55;
+export const BHOP_AIR_CROUCH_GRAVITY = 0.82;
+/** If horizontal speed collapses below this fraction after collision, reset bhop. */
+export const BHOP_WALL_SPEED_FRAC = 0.35;
 export const PRESENCE_TTL_SECONDS = 12;
 /** Edits per window, stored in Postgres so a cold start cannot reset the cap. */
 export const RATE_WINDOW_SECONDS = 8;

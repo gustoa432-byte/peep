@@ -15,6 +15,15 @@ export type ItemVoxel = {
   color: string;
 };
 
+/** Invisible forge spacer — stored in JSON, skipped by meshes (world Air = block id 0). */
+export const AIR_COLOR = "air";
+
+export function isAirColor(color: string | null | undefined): boolean {
+  if (color == null) return false;
+  const raw = color.trim().toLowerCase();
+  return raw === AIR_COLOR || raw === "#00000000" || raw === "transparent";
+}
+
 export type ItemTransform = {
   position: [number, number, number];
   rotation: [number, number, number];
@@ -151,6 +160,7 @@ export function normalizeHex(value: unknown): string | null {
   }
   if (typeof value !== "string") return null;
   const raw = value.trim();
+  if (isAirColor(raw)) return null;
   const six = raw.match(/^#?([0-9a-fA-F]{6})$/);
   if (six) return `#${six[1]!.toLowerCase()}`;
   const three = raw.match(/^#?([0-9a-fA-F]{3})$/);
@@ -161,7 +171,22 @@ export function normalizeHex(value: unknown): string | null {
   return null;
 }
 
+/** Normalize paint for forge cells: air stays `"air"`, else `#rrggbb`. */
+export function normalizePaint(value: unknown): string {
+  if (typeof value === "string" && isAirColor(value)) return AIR_COLOR;
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (isAirColor(String(rec.color ?? "")) || String(rec.kind ?? "").toLowerCase() === AIR_COLOR) {
+      return AIR_COLOR;
+    }
+  }
+  return normalizeHex(value) ?? DEFAULT_PAINT;
+}
+
 function colorFromRow(rec: Record<string, unknown>): string {
+  if (isAirColor(String(rec.color ?? "")) || String(rec.kind ?? "").toLowerCase() === AIR_COLOR) {
+    return AIR_COLOR;
+  }
   return normalizeHex(rec.color) ?? KIND_HEX[String(rec.kind ?? "")] ?? DEFAULT_PAINT;
 }
 
@@ -233,7 +258,7 @@ export function serializeItemDocument(doc: ItemDocument): string {
       x: v.x,
       y: v.y,
       z: v.z,
-      color: normalizeHex(v.color) ?? DEFAULT_PAINT,
+      color: isAirColor(v.color) ? AIR_COLOR : (normalizeHex(v.color) ?? DEFAULT_PAINT),
     })),
     transform: {
       position: [...doc.transform.position] as [number, number, number],
@@ -359,6 +384,7 @@ export function buildItemFromVoxels(voxels: ItemVoxel[]): THREE.Group {
 
   const byColor = new Map<string, ItemVoxel[]>();
   for (const v of voxels) {
+    if (isAirColor(v.color)) continue;
     const color = normalizeHex(v.color) ?? DEFAULT_PAINT;
     const list = byColor.get(color) ?? [];
     list.push(v);

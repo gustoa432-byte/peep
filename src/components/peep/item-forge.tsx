@@ -5,8 +5,10 @@ import { ItemEditor } from "@/lib/peep/item-editor";
 import { FORGE_TEMPLATES, templateById } from "@/lib/peep/item-templates";
 import { FORGE_PALETTE_MAX, readForgePalette, rememberForgeColor } from "@/lib/peep/item-palette";
 import {
+  AIR_COLOR,
   DEFAULT_PAINT,
   defaultTransform,
+  isAirColor,
   isGoldHex,
   normalizeHex,
   parseItemDocument,
@@ -102,7 +104,7 @@ export function ItemForge() {
   }, []);
 
   const pickColor = (next: string) => {
-    const hex = normalizeHex(next) ?? DEFAULT_PAINT;
+    const hex = isAirColor(next) ? AIR_COLOR : (normalizeHex(next) ?? DEFAULT_PAINT);
     setColor(hex);
     setPalette(rememberForgeColor(hex));
     setErase(false);
@@ -329,13 +331,13 @@ export function ItemForge() {
                 <label className="flex min-h-11 shrink-0 items-center gap-2 border-2 border-fg-on-ink/20 px-2">
                   <input
                     type="color"
-                    value={color}
+                    value={isAirColor(color) ? "#6a90b8" : color}
                     aria-label="свой цвет"
                     onChange={(e) => pickColor(e.target.value)}
                     className="peep-color-input"
                   />
                   <span className="hidden font-mono text-xs uppercase tracking-widest text-muted-on-ink sm:inline">
-                    {color}
+                    {isAirColor(color) ? "air" : color}
                   </span>
                 </label>
                 <div className="min-w-0 flex-1">
@@ -347,7 +349,7 @@ export function ItemForge() {
                       <button
                         key={hex}
                         type="button"
-                        aria-label={hex}
+                        aria-label={isAirColor(hex) ? "пустой блок (air)" : hex}
                         aria-pressed={color === hex && !erase}
                         onClick={() => pickColor(hex)}
                         className={cn(
@@ -359,9 +361,10 @@ export function ItemForge() {
                           className={cn(
                             "peep-swatch-chip block size-full rounded-pixel border border-fg-on-ink/35",
                             isGoldHex(hex) && "peep-gold-swatch",
+                            isAirColor(hex) && "peep-air-swatch",
                           )}
                           style={
-                            isGoldHex(hex)
+                            isGoldHex(hex) || isAirColor(hex)
                               ? undefined
                               : ({ "--swatch": hex } as CSSProperties)
                           }
