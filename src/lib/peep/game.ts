@@ -17,6 +17,7 @@ import {
 import { PeepAudio } from "./audio";
 import {
   AIR,
+  BARRIER,
   BHOP_AIR_CONTROL,
   BHOP_AIR_CROUCH_GRAVITY,
   BHOP_MAX,
@@ -1323,15 +1324,6 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private placeSpot(): { x: number; y: number; z: number; block: number; ok: boolean } | null {
     if (!this.hit) return null;
-    const selected = this.palette()[this.selected] ?? AIR;
-
-    // «Пусто» целится в сам блок под прицелом (стереть), а не в соседнюю клетку.
-    if (selected === AIR) {
-      const { x, y, z } = this.hit;
-      const prev = this.world.get(x, y, z);
-      return { x, y, z, block: AIR, ok: prev !== AIR };
-    }
-
     const block = this.currentBlock();
     if (block === AIR) return null;
     const x = this.hit.x + this.hit.nx;
@@ -1375,7 +1367,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     }
     this.placeGhost.mesh.visible = true;
     this.placeGhost.mesh.position.set(spot.x + 0.5, spot.y + 0.5, spot.z + 0.5);
-    const color = spot.block === AIR ? 0x6a90b8 : (BLOCK_COLORS[spot.block] ?? 0x888888);
+    const color = spot.block === BARRIER ? 0x6a90b8 : (BLOCK_COLORS[spot.block] ?? 0x888888);
     this.placeGhost.mat.color.setHex(spot.ok ? color : 0xa33b2a);
     const grow = 0.82 + 0.18 * this.placeCharge;
     this.placeGhost.mesh.scale.setScalar(spot.ok ? grow : 0.92);
@@ -1507,7 +1499,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private currentBlock(): number {
     const block = this.palette()[this.selected] ?? AIR;
-    if (block === AIR) return AIR;
+    if (block === BARRIER) return BARRIER;
     if (countOf(this.story, block) <= 0) return AIR;
     return block;
   }
@@ -1593,22 +1585,6 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private placeBlock() {
     if (!this.hit) return false;
-    const selected = this.palette()[this.selected] ?? AIR;
-
-    // «Пусто»: стереть выбранный блок (без удержания кирки), ресурс возвращается.
-    if (selected === AIR) {
-      const { x, y, z } = this.hit;
-      const prev = this.world.get(x, y, z);
-      if (prev === AIR) return false;
-      if (prev !== AIR) addBlock(this.story, prev);
-      this.persist();
-      this.applyLocal(x, y, z, AIR, true);
-      this.audio.strike(prev);
-      this.swing = 0.6;
-      this.hudDirty = true;
-      return true;
-    }
-
     const block = this.currentBlock();
     if (block === AIR) return false;
     const x = this.hit.x + this.hit.nx;
@@ -1616,10 +1592,11 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     const z = this.hit.z + this.hit.nz;
     if (this.world.get(x, y, z) !== AIR) return false;
     if (this.overlapsPlayer(x, y, z)) return false;
-    if (!takeBlock(this.story, block)) return false;
+    // Invisible barrier is infinite; other blocks spend inventory.
+    if (block !== BARRIER && !takeBlock(this.story, block)) return false;
     this.persist();
     this.applyLocal(x, y, z, block, true);
-    this.audio.place(block);
+    this.audio.place(block === BARRIER ? 3 : block);
     this.swing = 0.6;
     this.hudDirty = true;
     return true;
