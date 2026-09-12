@@ -104,12 +104,27 @@ function pixelMod(kind: number, x: number, y: number, frame = 0): number {
     const frameEdge = x < 2 || x > 13 || y < 2 || y > 13 ? -0.18 : 0;
     return 0.72 + a * 0.18 + band + frameEdge;
   }
-  if (kind === GOLD) return 0.88 + a * 0.22 + (b > 0.82 ? 0.14 : 0);
+  if (kind === GOLD) {
+    const ox = (x + frame * 7) & 15;
+    const oy = (y + frame * 4) & 15;
+    const spark = pixHash(ox, oy, kind + frame * 11);
+    const fleck = pixHash(ox * 2, oy * 3, 41 + frame);
+    return 0.78 + a * 0.18 + (spark > 0.86 ? 0.46 : 0) + (fleck > 0.92 ? 0.32 : 0);
+  }
   return b > 0.72 ? 0.45 : 0.78 + a * 0.28;
 }
 
+/** Same 3-frame shift as leaf grain — tiny isolated gaps, not a checker. */
+function leafHole(x: number, y: number, frame: number): boolean {
+  const ox = (x + frame * 5) & 15;
+  const oy = (y + frame * 3) & 15;
+  const h = pixHash(ox, oy, 61 + frame * 7);
+  const iso = pixHash(ox + 2, oy + 5, 23 + frame);
+  return h > 0.912 && iso > 0.42;
+}
+
 /**
- * 8×3 nearest atlas. Row 0 is stills; rows 1–2 are leaf rustle frames.
+ * 8×3 nearest atlas. Row 0 is stills; rows 1–2 are leaf / gold frames.
  * 128 ≈ multiply 1.0.
  */
 export function createBlockAtlas(): THREE.DataTexture {
@@ -123,7 +138,7 @@ export function createBlockAtlas(): THREE.DataTexture {
   for (let row = 0; row < frames; row++) {
     for (let t = 0; t < types; t++) {
       const kind = kinds[t]!;
-      const frame = kind === LEAVES ? row : 0;
+      const frame = kind === LEAVES || kind === GOLD ? row : 0;
       for (let y = 0; y < tw; y++) {
         for (let x = 0; x < tw; x++) {
           const m = Math.min(1.35, Math.max(0.4, pixelMod(kind, x, y, frame)));
@@ -132,7 +147,7 @@ export function createBlockAtlas(): THREE.DataTexture {
           data[i] = v;
           data[i + 1] = v;
           data[i + 2] = v;
-          data[i + 3] = 255;
+          data[i + 3] = kind === LEAVES && leafHole(x, y, frame) ? 0 : 255;
         }
       }
     }
@@ -146,11 +161,70 @@ export function createBlockAtlas(): THREE.DataTexture {
   return tex;
 }
 
+/** 9×1 nearest atlas for кузница voxels: 8 world grains + a generic paint tile. */
+export const ITEM_ATLAS_COLS = 9;
+export const ITEM_ATLAS_TILE = 16;
+
+let itemAtlas: THREE.DataTexture | null = null;
+
+export function getItemAtlas(): THREE.DataTexture {
+  if (!itemAtlas) itemAtlas = createItemAtlas();
+  return itemAtlas;
+}
+
+function createItemAtlas(): THREE.DataTexture {
+  const tw = ITEM_ATLAS_TILE;
+  const types = ITEM_ATLAS_COLS;
+  const w = tw * types;
+  const h = tw;
+  const data = new Uint8Array(w * h * 4);
+  const kinds = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES, CHEST, GOLD, 99];
+  for (let t = 0; t < types; t++) {
+    const kind = kinds[t]!;
+    for (let y = 0; y < tw; y++) {
+      for (let x = 0; x < tw; x++) {
+        const m = Math.min(1.28, Math.max(0.38, pixelMod(kind, x, y, 0)));
+        const v = Math.round(Math.min(255, Math.max(0, m * 255)));
+        const i = (y * w + t * tw + x) * 4;
+        data[i] = v;
+        data[i + 1] = v;
+        data[i + 2] = v;
+        data[i + 3] = 255;
+      }
+    }
+  }
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.name = "peep-item-atlas";
+  return tex;
+}
+
+export function mapItemCubeUVs(geo: THREE.BufferGeometry, col: number) {
+  const uv = geo.getAttribute("uv");
+  if (!uv) return;
+  const inset = 0.5 / ITEM_ATLAS_TILE;
+  const u0 = (col + inset) / ITEM_ATLAS_COLS;
+  const u1 = (col + 1 - inset) / ITEM_ATLAS_COLS;
+  const v0 = inset;
+  const v1 = 1 - inset;
+  for (let i = 0; i < uv.count; i++) {
+    const x = uv.getX(i);
+    const y = uv.getY(i);
+    uv.setXY(i, u0 + x * (u1 - u0), v0 + y * (v1 - v0));
+  }
+  uv.needsUpdate = true;
+}
+
 /** Sample the 16px atlas onto world-space faces; grass sides use the dirt tile. */
 export const BLOCK_TEXEL_GLSL = /* glsl */ `
 float kind = floor(vKind + 0.1);
 float grass = step(0.5, kind) * (1.0 - step(1.5, kind));
 float leaf = step(5.5, kind) * (1.0 - step(6.5, kind));
+float gold = step(7.5, kind) * (1.0 - step(8.5, kind));
 vec3 pn = abs(normalize(vPeepN));
 vec2 faceUV = mix(mix(vPeepW.xy, vPeepW.zy, step(pn.z, pn.x)), vPeepW.xz, step(max(pn.x, pn.z), pn.y));
 vec2 uv = fract(faceUV);
@@ -158,15 +232,28 @@ float side = 1.0 - smoothstep(0.55, 0.95, abs(vPeepN.y));
 float bot = smoothstep(0.55, 0.95, -vPeepN.y);
 float tile = clamp(kind - 1.0, 0.0, 7.0);
 tile = mix(tile, 1.0, grass * max(side, bot));
-float frame = leaf * mod(floor(uTime * 2.0), 3.0);
+float live = max(leaf, gold);
+float speed = mix(2.0, 4.0, gold);
+float frame = live * mod(floor(uTime * speed), 3.0);
 vec2 aUv = vec2(
   (tile + (uv.x * 15.0 + 0.5) / 16.0) / 8.0,
   (frame + (uv.y * 15.0 + 0.5) / 16.0) / 3.0
 );
-float m = texture2D(uAtlas, aUv).r * 2.0;
+vec4 leafTex = texture2D(uAtlas, aUv);
+float m = leafTex.r * 2.0;
+if (leaf > 0.5 && leafTex.a < 0.5) discard;
 diffuseColor.rgb *= m;
 float lip = grass * side * step(0.8, uv.y);
 diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.31, 0.62, 0.24) * m, lip);
+float gf = mod(floor(uTime * 4.0), 3.0);
+vec3 g0 = vec3(0.886, 0.722, 0.290);
+vec3 g1 = vec3(1.0, 0.843, 0.0);
+vec3 g2 = vec3(1.0, 0.953, 0.659);
+vec3 gCol = mix(g0, g1, step(0.5, gf));
+gCol = mix(gCol, g2, step(1.5, gf));
+float spark = 0.84 + 0.28 * abs(sin(uTime * 7.2 + vPeepW.x * 5.0 + vPeepW.z * 3.7));
+float fleck = step(0.93, fract(sin(dot(floor(vPeepW * 9.0), vec3(12.9898, 78.233, 45.164)) + floor(uTime * 6.0)) * 43758.5453));
+diffuseColor.rgb = mix(diffuseColor.rgb, gCol * m * spark + vec3(1.0, 0.96, 0.78) * fleck, gold);
 `;
 
 /** Extra texel contrast in shade; sunlight keeps the atlas readable. */

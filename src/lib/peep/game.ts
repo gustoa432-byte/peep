@@ -31,6 +31,7 @@ import {
   JUMP_SPEED,
   MESH_PER_FRAME,
   PLACE_DOUBLE_MS,
+  nextEditDelay,
   PLACE_HOLD_S,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
@@ -55,7 +56,7 @@ import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./te
 import type { BlockEdit, EmoteKind, HudState, NetMsg, PresencePlayer } from "./types";
 import { EMOTE_DURATION } from "./types";
 import { createHeldItem } from "./held-item";
-import { ITEM_DEBUG } from "./item-voxels";
+import { ITEM_DEBUG, tickGoldObject } from "./item-voxels";
 import { hatSpot, VoxelWorld } from "./world";
 
 export { buildItemFromJSON } from "./held-item";
@@ -241,6 +242,8 @@ export class PeepGame {
   private breakKey = "";
   private strikeT = 0;
   private placeTickT = 0;
+  private placeWait = 0;
+  private breakWait = 0;
   private bob = 0;
   private peerConnected = false;
   private peerCount = 1;
@@ -288,7 +291,7 @@ export class PeepGame {
       vertexColors: true,
       color: 0xffffff,
     });
-    this.material.customProgramCacheKey = () => "peep-atlas-v2";
+    this.material.customProgramCacheKey = () => "peep-atlas-v5";
     this.material.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.grainTime;
       shader.uniforms.uPeepTime = this.grainTime;
@@ -485,6 +488,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.placeCharge = 0;
     this.placeKey = "";
     this.placeTickT = 0;
+    this.placeWait = 0;
     this.hudDirty = true;
     this.audio.placeTick(this.currentBlock());
     this.swing = 0.45;
@@ -496,6 +500,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.placeT = 0;
     if (this.placeCharge !== 0) this.hudDirty = true;
     this.placeCharge = 0;
+    this.placeWait = 0;
     this.placeGhost.mesh.visible = false;
     this.hudDirty = true;
   }
@@ -514,6 +519,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.breakCharge = 0;
     this.breakKey = "";
     this.strikeT = 0;
+    this.breakWait = 0;
     this.hudDirty = true;
     if (this.hit) {
       this.breakKey = `${this.hit.x},${this.hit.y},${this.hit.z}`;
@@ -527,6 +533,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.breakT = 0;
     if (this.breakCharge !== 0) this.hudDirty = true;
     this.breakCharge = 0;
+    this.breakWait = 0;
     this.breakFx.group.visible = false;
   }
 
@@ -1263,6 +1270,15 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       }
       return;
     }
+    if (this.placeWait > 0) {
+      this.placeWait = Math.max(0, this.placeWait - dt);
+      if (this.placeCharge !== 0) {
+        this.placeT = 0;
+        this.placeCharge = 0;
+        this.hudDirty = true;
+      }
+      return;
+    }
     this.placeT += dt;
     const next = Math.min(1, this.placeT / PLACE_HOLD_S);
     if (next !== this.placeCharge) {
@@ -1280,6 +1296,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       this.placeT = 0;
       this.placeCharge = 0;
       this.placeKey = "";
+      this.placeWait = nextEditDelay();
       this.hudDirty = true;
     }
   }
@@ -1299,8 +1316,20 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       this.breakKey = key;
       this.breakT = 0;
       this.strikeT = 0;
-      this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
-      this.swing = 1;
+      if (this.breakWait <= 0) {
+        this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+        this.swing = 1;
+      }
+    }
+    if (this.breakWait > 0) {
+      this.breakWait = Math.max(0, this.breakWait - dt);
+      this.breakFx.group.visible = false;
+      if (this.breakCharge !== 0) {
+        this.breakT = 0;
+        this.breakCharge = 0;
+        this.hudDirty = true;
+      }
+      return;
     }
     this.breakT += dt;
     this.strikeT += dt;
@@ -1327,6 +1356,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       this.breakT = 0;
       this.breakCharge = 0;
       this.breakKey = "";
+      this.breakWait = nextEditDelay();
       this.breakFx.group.visible = false;
       this.hudDirty = true;
     }
@@ -1349,6 +1379,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       rest.y - s * 0.12 + bob,
       rest.z - s * 0.03,
     );
+    tickGoldObject(this.pickaxe, this.anim);
   }
 
   private currentBlock(): number {
@@ -1419,7 +1450,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       if (!this.story.chest) {
         this.story.chest = true;
         this.story.friday = true;
-        addBlock(this.story, GOLD, 1);
+        addBlock(this.story, GOLD, 16);
         this.persist();
         this.chestOffer = true;
       }

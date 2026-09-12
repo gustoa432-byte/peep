@@ -20,6 +20,9 @@
   --color-block-sand: #d2b27a;
   --color-block-leaf: #3fa83c;
   --color-block-gold: #e2b84a;
+  --color-gold-warm: #e2b84a;
+  --color-gold-bright: #ffd700;
+  --color-gold-flash: #fff3a8;
   --color-forge-wood: #8b5a2b;
   --color-forge-metal: #808080;
   --color-forge-terra: #b85c38;
@@ -142,6 +145,29 @@
 
   .peep-forge-slider {
     accent-color: var(--color-primary);
+  }
+
+  .peep-swatch-chip {
+    background: var(--swatch);
+  }
+
+  @keyframes peep-gold-shimmer {
+    0%,
+    32% {
+      background: var(--color-gold-warm);
+    }
+    33%,
+    65% {
+      background: var(--color-gold-bright);
+    }
+    66%,
+    100% {
+      background: var(--color-gold-flash);
+    }
+  }
+
+  .peep-gold-swatch {
+    animation: peep-gold-shimmer 0.75s steps(1) infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {

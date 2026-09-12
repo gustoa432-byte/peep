@@ -1,5 +1,7 @@
 import * as THREE from "three";
+import { BLOCK_COLORS, CHEST, DIRT, GOLD, GRASS, LEAVES, SAND, STONE, WOOD } from "./constants";
 import { PICKAXE_REST } from "./pickaxe";
+import { getItemAtlas, mapItemCubeUVs } from "./textures";
 
 export const FORGE_STORAGE_KEY = "peep.forge.item";
 
@@ -48,6 +50,36 @@ export const FORGE_SWATCHES = [
 
 export const DEFAULT_PAINT: string = FORGE_SWATCHES[6];
 
+/** World gold, classic gold, highlight flash — cycled on gold voxels. */
+export const GOLD_HEXES = ["#e2b84a", "#ffd700", "#fff3a8"] as const;
+const GOLD_HEX_SET = new Set<string>(GOLD_HEXES);
+
+export function isGoldHex(color: string): boolean {
+  const hex = normalizeHex(color);
+  return hex != null && GOLD_HEX_SET.has(hex);
+}
+
+export function goldHexAt(timeS: number): string {
+  return GOLD_HEXES[((Math.floor(timeS * 4) % 3) + 3) % 3]!;
+}
+
+export function applyGoldSparkle(mat: { color: THREE.Color }, timeS: number) {
+  const spark = 1 + 0.22 * Math.abs(Math.sin(timeS * 7.2));
+  mat.color.setHex(hexToInt(goldHexAt(timeS)));
+  mat.color.multiplyScalar(spark);
+}
+
+export function tickGoldObject(root: THREE.Object3D, timeS: number) {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const color = obj.userData.color as string | undefined;
+    if (!(obj.userData.gold === true || (color != null && isGoldHex(color)))) return;
+    const mat = obj.material;
+    if (!mat || Array.isArray(mat)) return;
+    applyGoldSparkle(mat as THREE.MeshLambertMaterial, timeS);
+  });
+}
+
 /** Old кузница `kind` values → flat palette hex. */
 const KIND_HEX: Record<string, string> = {
   wood: "#8b5a2b",
@@ -71,7 +103,7 @@ export type ItemDebugTransform = {
   scale: number;
 };
 
-/** Live rest pose for the overlay item. Leva / примерочная write here. */
+/** Live rest pose for the overlay item. Примерочная writes here. */
 export const ITEM_DEBUG: ItemDebugTransform = {
   x: PICKAXE_REST.x,
   y: PICKAXE_REST.y,
@@ -79,14 +111,14 @@ export const ITEM_DEBUG: ItemDebugTransform = {
   rx: PICKAXE_REST.rx,
   ry: PICKAXE_REST.ry,
   rz: PICKAXE_REST.rz,
-  scale: 0.88,
+  scale: PICKAXE_REST.scale,
 };
 
 export function defaultTransform(): ItemTransform {
   return {
     position: [PICKAXE_REST.x, PICKAXE_REST.y, PICKAXE_REST.z],
     rotation: [PICKAXE_REST.rx, PICKAXE_REST.ry, PICKAXE_REST.rz],
-    scale: 0.88,
+    scale: PICKAXE_REST.scale,
   };
 }
 
@@ -241,6 +273,85 @@ export function writeStoredItem(voxels: ItemVoxel[]) {
   });
 }
 
+const ITEM_TILE_KINDS = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES, CHEST, GOLD];
+
+/** Extra hexes that should reuse a world grain (кирка / палитра). */
+const ITEM_TILE_ALIASES: Record<string, number> = {
+  "#8b5a2b": 3,
+  "#8a5a38": 1,
+  "#808080": 2,
+  "#7a7670": 2,
+  "#b85c38": 6,
+  "#5f7a53": 0,
+  "#3fa83c": 5,
+  "#d2b27a": 4,
+  "#c4b8ac": 2,
+};
+
+export function itemTileForHex(color: string): number {
+  const hex = normalizeHex(color);
+  if (!hex) return 8;
+  if (isGoldHex(hex)) return 7;
+  const value = hexToInt(hex);
+  for (const kind of ITEM_TILE_KINDS) {
+    if (BLOCK_COLORS[kind] === value) return ITEM_TILE_KINDS.indexOf(kind);
+  }
+  return ITEM_TILE_ALIASES[hex] ?? 8;
+}
+
+export function itemCubeGeometry(size: number, color: string): THREE.BoxGeometry {
+  const geo = new THREE.BoxGeometry(size, size, size);
+  mapItemCubeUVs(geo, itemTileForHex(color));
+  const normals = geo.getAttribute("normal");
+  const shades = new Float32Array(normals.count * 3);
+  for (let i = 0; i < normals.count; i++) {
+    const ny = normals.getY(i);
+    const k = ny > 0.5 ? 1.06 : ny < -0.5 ? 0.68 : 0.88;
+    shades[i * 3] = k;
+    shades[i * 3 + 1] = k;
+    shades[i * 3 + 2] = k;
+  }
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(shades, 3));
+  return geo;
+}
+
+export function createItemMaterial(color: string): THREE.MeshLambertMaterial {
+  const hex = normalizeHex(color) ?? DEFAULT_PAINT;
+  const tile = itemTileForHex(hex);
+  const mat = new THREE.MeshLambertMaterial({
+    map: getItemAtlas(),
+    color: hexToInt(hex),
+    vertexColors: true,
+  });
+  mat.userData.gold = isGoldHex(hex);
+  mat.userData.itemTile = tile;
+  mat.customProgramCacheKey = () => "peep-item-tex";
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uItemTile = { value: tile };
+    shader.vertexShader = `varying vec3 vItemW;\nvarying vec3 vItemN;\n${shader.vertexShader}`.replace(
+      "#include <project_vertex>",
+      `#include <project_vertex>
+vItemW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+vItemN = normalize(mat3(modelMatrix) * objectNormal);`,
+    );
+    shader.fragmentShader = `uniform float uItemTile;\nvarying vec3 vItemW;\nvarying vec3 vItemN;\n${shader.fragmentShader}`.replace(
+      "#include <map_fragment>",
+      `{
+	vec3 pn = abs(normalize(vItemN));
+	vec2 faceUV = mix(mix(vItemW.xy, vItemW.zy, step(pn.z, pn.x)), vItemW.xz, step(max(pn.x, pn.z), pn.y));
+	vec2 lu = fract(faceUV);
+	vec2 aUv = vec2(
+		(uItemTile + (lu.x * 15.0 + 0.5) / 16.0) / 9.0,
+		(lu.y * 15.0 + 0.5) / 16.0
+	);
+	vec4 sampledDiffuseColor = texture2D(map, aUv);
+	diffuseColor *= sampledDiffuseColor;
+}`,
+    );
+  };
+  return mat;
+}
+
 export function buildItemFromVoxels(voxels: ItemVoxel[]): THREE.Group {
   const g = new THREE.Group();
   g.name = "forgeItem";
@@ -256,8 +367,8 @@ export function buildItemFromVoxels(voxels: ItemVoxel[]): THREE.Group {
 
   const dummy = new THREE.Object3D();
   for (const [color, list] of byColor) {
-    const geo = new THREE.BoxGeometry(ITEM_UNIT, ITEM_UNIT, ITEM_UNIT);
-    const mat = new THREE.MeshBasicMaterial({ color: hexToInt(color) });
+    const geo = itemCubeGeometry(ITEM_UNIT, color);
+    const mat = createItemMaterial(color);
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
     inst.frustumCulled = false;
     list.forEach((v, i) => {
@@ -266,6 +377,8 @@ export function buildItemFromVoxels(voxels: ItemVoxel[]): THREE.Group {
       inst.setMatrixAt(i, dummy.matrix);
     });
     inst.instanceMatrix.needsUpdate = true;
+    inst.userData.color = color;
+    inst.userData.gold = isGoldHex(color);
     g.add(inst);
   }
   return g;

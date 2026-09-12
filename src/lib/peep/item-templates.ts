@@ -1,3 +1,14 @@
+import {
+  BLOCK_COLORS,
+  CHEST,
+  DIRT,
+  GOLD,
+  GRASS,
+  LEAVES,
+  SAND,
+  STONE,
+  WOOD as WOOD_ID,
+} from "./constants";
 import type { ItemVoxel } from "./item-voxels";
 
 const WOOD = "#8b5a2b";
@@ -10,12 +21,16 @@ const IRIS = "#2a221c";
 const LIP = "#6a3a36";
 const BROW = "#3a332c";
 
-function cube16(): ItemVoxel[] {
+function blockHex(id: number): string {
+  return `#${(BLOCK_COLORS[id] ?? 0xc4b8ac).toString(16).padStart(6, "0")}`;
+}
+
+function cube16(color: string): ItemVoxel[] {
   const out: ItemVoxel[] = [];
   for (let y = 0; y < 16; y++) {
     for (let z = -8; z < 8; z++) {
       for (let x = -8; x < 8; x++) {
-        out.push({ x, y, z, color: CLAY });
+        out.push({ x, y, z, color });
       }
     }
   }
@@ -59,10 +74,29 @@ const PICKAXE_CELLS: ItemVoxel[] = [
   { x: 2, y: 8, z: 1, color: METAL },
 ];
 
-export type ForgeTemplateId = "cube" | "head" | "pickaxe";
+export type ForgeTemplateId =
+  | "cube"
+  | "grass"
+  | "dirt"
+  | "stone"
+  | "wood"
+  | "sand"
+  | "leaves"
+  | "chest"
+  | "gold"
+  | "head"
+  | "pickaxe";
 
 export const FORGE_TEMPLATES: { id: ForgeTemplateId; label: string; voxels: ItemVoxel[] }[] = [
-  { id: "cube", label: "пустой блок", voxels: cube16() },
+  { id: "cube", label: "пустой блок", voxels: cube16(CLAY) },
+  { id: "grass", label: "трава", voxels: cube16(blockHex(GRASS)) },
+  { id: "dirt", label: "земля", voxels: cube16(blockHex(DIRT)) },
+  { id: "stone", label: "камень", voxels: cube16(blockHex(STONE)) },
+  { id: "wood", label: "дерево", voxels: cube16(blockHex(WOOD_ID)) },
+  { id: "sand", label: "песок", voxels: cube16(blockHex(SAND)) },
+  { id: "leaves", label: "листва", voxels: cube16(blockHex(LEAVES)) },
+  { id: "chest", label: "сундук", voxels: cube16(blockHex(CHEST)) },
+  { id: "gold", label: "золото", voxels: cube16(blockHex(GOLD)) },
   { id: "head", label: "голова", voxels: head() },
   { id: "pickaxe", label: "кирка", voxels: PICKAXE_CELLS },
 ];

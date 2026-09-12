@@ -2,12 +2,13 @@ import * as THREE from "three";
 
 /** Grip is the pivot. The metal tip — not the mesh centroid — is the strike point. */
 export const PICKAXE_REST = {
-  x: 0.3,
-  y: -0.32,
-  z: -0.58,
-  rx: -0.4,
-  ry: 0.92,
-  rz: 0.4,
+  x: 0.86,
+  y: -1.27,
+  z: -1.59,
+  rx: 2.38,
+  ry: 1.04,
+  rz: -Math.PI,
+  scale: 1.68,
 };
 
 const UNIT = 0.04;
@@ -71,11 +72,11 @@ function paint(kind: Kind, x: number, y: number): number {
   const a = hash2(x, y, kind + 1);
   const b = hash2(x * 3 + 1, y * 2, kind + 5);
   if (kind === WOOD) {
-    const stripe = ((x + Math.floor(a * 2)) % 4 === 0 ? -0.16 : 0.05) + (y % 7 === 0 ? -0.08 : 0);
-    return 0.76 + a * 0.16 + stripe;
+    const stripe = ((x + Math.floor(a * 2)) % 4 === 0 ? -0.28 : 0.08) + (y % 7 === 0 ? -0.12 : 0);
+    return 0.7 + a * 0.22 + stripe;
   }
-  if (kind === METAL) return 0.8 + a * 0.2 + (b > 0.88 ? -0.22 : 0) + (b < 0.1 ? 0.1 : 0);
-  return 0.78 + a * 0.16 + (b > 0.85 ? 0.08 : 0);
+  if (kind === METAL) return 0.72 + a * 0.28 + (b > 0.84 ? -0.32 : 0) + (b < 0.12 ? 0.16 : 0);
+  return 0.7 + a * 0.22 + (b > 0.82 ? 0.14 : 0);
 }
 
 /** 32×32 nearest atlas: wood, metal, terracotta, metal scratch. */
@@ -86,8 +87,8 @@ export function createPickaxeAtlas(): THREE.DataTexture {
       const kind = (tx + ty * 2 === 2 ? ACCENT : tx === 1 ? METAL : WOOD) as Kind;
       for (let y = 0; y < TILE; y++) {
         for (let x = 0; x < TILE; x++) {
-          const m = Math.min(1.15, Math.max(0.72, paint(kind, x, y)));
-          const v = Math.round(Math.min(255, Math.max(0, m * 220)));
+          const m = Math.min(1.22, Math.max(0.52, paint(kind, x, y)));
+          const v = Math.round(Math.min(255, Math.max(0, m * 235)));
           const i = ((ty * TILE + y) * ATLAS + tx * TILE + x) * 4;
           data[i] = v;
           data[i + 1] = v;
@@ -221,7 +222,7 @@ export function createPickaxe(): THREE.Group {
   tip.name = "tip";
   tip.position.set(PICKAXE_TIP.x, PICKAXE_TIP.y, PICKAXE_TIP.z);
   g.add(mesh, tip);
-  g.scale.setScalar(0.88);
+  g.scale.setScalar(PICKAXE_REST.scale);
   g.position.set(PICKAXE_REST.x, PICKAXE_REST.y, PICKAXE_REST.z);
   g.rotation.set(PICKAXE_REST.rx, PICKAXE_REST.ry, PICKAXE_REST.rz);
   return g;

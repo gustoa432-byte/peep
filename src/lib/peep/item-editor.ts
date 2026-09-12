@@ -3,12 +3,17 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CASTAWAY, createAvatar, createLocalArm } from "./avatar";
 import {
   DEFAULT_PAINT,
+  applyGoldSparkle,
   applyItemTransform,
   buildItemFromVoxels,
+  createItemMaterial,
   defaultTransform,
   hexToInt,
+  isGoldHex,
+  itemCubeGeometry,
   normalizeHex,
   readStoredDocument,
+  tickGoldObject,
   writeStoredDocument,
   type ItemDocument,
   type ItemTransform,
@@ -34,7 +39,7 @@ export class ItemEditor {
   private readonly cells = new Map<string, ItemVoxel>();
   private readonly batches = new Map<string, THREE.InstancedMesh>();
   private readonly batchKeys = new Map<string, string[]>();
-  private readonly mats = new Map<string, THREE.MeshBasicMaterial>();
+  private readonly mats = new Map<string, THREE.MeshLambertMaterial>();
   private readonly plane: THREE.Mesh;
   private readonly ghost: THREE.Mesh;
   private readonly ghostMat: THREE.MeshBasicMaterial;
@@ -154,7 +159,7 @@ export class ItemEditor {
 
     const stored = readStoredDocument();
     if (stored) {
-      this.transform = stored.transform;
+      this.transform = defaultTransform();
       applyItemTransform(this.transform);
       this.addMany(stored.voxels);
       this.rebuildAll();
@@ -355,11 +360,11 @@ export class ItemEditor {
     }
   }
 
-  private material(color: string): THREE.MeshBasicMaterial {
+  private material(color: string): THREE.MeshLambertMaterial {
     const hex = normalizeHex(color) ?? DEFAULT_PAINT;
     let mat = this.mats.get(hex);
     if (!mat) {
-      mat = new THREE.MeshBasicMaterial({ color: hexToInt(hex) });
+      mat = createItemMaterial(hex);
       this.mats.set(hex, mat);
     }
     return mat;
@@ -382,7 +387,7 @@ export class ItemEditor {
       if (v.color === color) list.push(v);
     }
     if (!list.length) return;
-    const geo = new THREE.BoxGeometry(1, 1, 1);
+    const geo = itemCubeGeometry(1, color);
     const inst = new THREE.InstancedMesh(geo, this.material(color), list.length);
     inst.frustumCulled = false;
     inst.userData.color = color;
@@ -395,6 +400,7 @@ export class ItemEditor {
       keys.push(keyOf(v.x, v.y, v.z));
     });
     inst.instanceMatrix.needsUpdate = true;
+    inst.userData.gold = isGoldHex(color);
     this.scene.add(inst);
     this.batches.set(color, inst);
     this.batchKeys.set(color, keys);
@@ -572,6 +578,15 @@ export class ItemEditor {
       this.swing = Math.max(0, this.swing - dt * 8);
       this.applyHeldPose();
     }
+    const t = now / 1000;
+    for (const [color, inst] of this.batches) {
+      if (!isGoldHex(color)) continue;
+      const mat = inst.material;
+      if (mat instanceof THREE.MeshBasicMaterial) applyGoldSparkle(mat, t);
+    }
+    if (this.held) tickGoldObject(this.held, t);
+    if (isGoldHex(this.color)) applyGoldSparkle(this.ghostMat, t);
+    else this.ghostMat.color.setHex(hexToInt(this.color));
     if (!this.preview) this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };
