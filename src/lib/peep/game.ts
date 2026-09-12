@@ -27,6 +27,10 @@ import {
   BLOCK_PALETTE,
   BREAK_HOLD_S,
   CHEST,
+  CHEST_CRAFT_S,
+  CHEST_X,
+  CHEST_Y,
+  CHEST_Z,
   CHUNK_S,
   CROUCH_EYE_HEIGHT,
   CROUCH_HEIGHT,
@@ -62,6 +66,8 @@ import {
 } from "./build-fx";
 import { buildChunkGeometry } from "./mesh";
 import { addBlock, countOf, loadStory, saveStory, takeBlock, type Story } from "./progress";
+import { getTelegramSaveId } from "./player-id";
+import type { WorldSavePayload } from "./world-serialize";
 import { voxelRaycast, type VoxelHit } from "./raycast";
 import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./textures";
 import type { BlockEdit, EmoteKind, HudState, NetMsg, PresencePlayer } from "./types";
@@ -142,9 +148,13 @@ export type PeepGameOptions = {
   generation: number;
   isCreator: boolean;
   playerId: string;
+  /** When set (Telegram load), replaces localStorage story. */
+  inventoryOverride?: Story | null;
   onHud: (hud: HudState) => void;
   onLost: () => void;
   onPlaced?: () => void;
+  /** Fired when blocks or inventory change — for lazy server save. */
+  onWorldDirty?: () => void;
 };
 
 const LOOK_SENS = 0.0022;
@@ -256,6 +266,9 @@ export class PeepGame {
   private placeKey = "";
   private breakKey = "";
   private strikeT = 0;
+  private chestBar: HudState["chestBar"] = null;
+  private readonly chestScr = new THREE.Vector3();
+  private chestCraftSaveT = 0;
   private placeTickT = 0;
   private placeWait = 0;
   private breakWait = 0;
@@ -293,9 +306,12 @@ export class PeepGame {
     this.opts = opts;
     this.editCursor = opts.cursor;
     this.generation = opts.generation;
-    this.story = loadStory(opts.worldId, opts.playerId);
+    this.story = opts.inventoryOverride
+      ? structuredClone(opts.inventoryOverride)
+      : loadStory(opts.worldId, opts.playerId);
     this.world = new VoxelWorld(opts.seed, opts.edits);
     if (this.story.chest) this.world.hideChest();
+    if (opts.inventoryOverride) this.persist();
     const spawn = this.world.spawn();
     this.pos.set(spawn.x, spawn.y, spawn.z);
     this.yaw = Math.atan2(-SUN_DIR.x, -SUN_DIR.z);
@@ -715,6 +731,29 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private persist() {
     saveStory(this.opts.worldId, this.opts.playerId, this.story);
+    this.opts.onWorldDirty?.();
+  }
+
+  /**
+   * Compact delta for Telegram lazy-save: only touched voxels + inventory.
+   * Returns null outside Telegram (no tg_user_id).
+   */
+  serializeWorld(): WorldSavePayload | null {
+    const tg = getTelegramSaveId();
+    if (!tg) return null;
+    return {
+      tg_user_id: tg,
+      world_id: this.opts.worldId,
+      seed: this.opts.seed,
+      edits: this.world.listEdits(),
+      inventory: {
+        counts: { ...this.story.counts },
+        friday: this.story.friday,
+        hat: this.story.hat,
+        chest: this.story.chest,
+        chestCraft: this.story.chestCraft,
+      },
+    };
   }
 
   private palette(): readonly number[] {
@@ -1071,6 +1110,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.audio.tickAmbient(dt);
     this.updateHighlight();
     this.updateBuild(dt);
+    this.updateChestBar();
     this.netTick(now);
     this.flushDirty();
     if (this.hudDirty) this.emitHud();
@@ -1477,21 +1517,25 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       }
       return;
     }
+    const block = this.world.get(this.hit.x, this.hit.y, this.hit.z);
+    const chest = block === CHEST;
+    const holdS = chest ? CHEST_CRAFT_S : BREAK_HOLD_S;
     const key = `${this.hit.x},${this.hit.y},${this.hit.z}`;
     if (key !== this.breakKey) {
       this.breakKey = key;
-      this.breakT = 0;
+      this.breakT = chest ? this.story.chestCraft * CHEST_CRAFT_S : 0;
       this.strikeT = 0;
       if (this.breakWait <= 0) {
-        this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+        this.audio.strike(block);
         this.swing = 1;
       }
     }
     if (this.breakWait > 0) {
       this.breakWait = Math.max(0, this.breakWait - dt);
       this.breakFx.group.visible = false;
+      if (chest) this.breakT = this.story.chestCraft * CHEST_CRAFT_S;
+      else if (this.breakCharge !== 0) this.breakT = 0;
       if (this.breakCharge !== 0) {
-        this.breakT = 0;
         this.breakCharge = 0;
         this.hudDirty = true;
       }
@@ -1499,12 +1543,21 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     }
     this.breakT += dt;
     this.strikeT += dt;
-    if (this.strikeT >= 0.15) {
+    const strikeEvery = chest ? 0.55 : 0.15;
+    if (this.strikeT >= strikeEvery) {
       this.strikeT = 0;
-      this.audio.strike(this.world.get(this.hit.x, this.hit.y, this.hit.z));
+      this.audio.strike(block);
       this.swing = 1;
     }
-    const next = Math.min(1, this.breakT / BREAK_HOLD_S);
+    const next = Math.min(1, this.breakT / holdS);
+    if (chest) {
+      this.story.chestCraft = next;
+      this.chestCraftSaveT += dt;
+      if (this.chestCraftSaveT >= 0.5) {
+        this.chestCraftSaveT = 0;
+        this.persist();
+      }
+    }
     if (next !== this.breakCharge) {
       this.breakCharge = next;
       this.hudDirty = true;
@@ -1517,13 +1570,65 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.breakFx.lines.geometry.setDrawRange(0, shown * 2);
     (this.breakFx.lines.material as THREE.LineBasicMaterial).opacity = 0.55 + next * 0.45;
     this.swing = Math.max(this.swing, next * 0.35);
-    if (this.breakT >= BREAK_HOLD_S) {
+    if (this.breakT >= holdS) {
+      if (chest) {
+        this.story.chestCraft = 1;
+        this.persist();
+      }
       this.breakBlock();
       this.breakT = 0;
       this.breakCharge = 0;
       this.breakKey = "";
       this.breakWait = nextEditDelay();
       this.breakFx.group.visible = false;
+      this.hudDirty = true;
+    }
+  }
+
+  private updateChestBar() {
+    if (this.story.chest || this.world.get(CHEST_X, CHEST_Y, CHEST_Z) !== CHEST) {
+      if (this.chestBar) {
+        this.chestBar = null;
+        this.hudDirty = true;
+      }
+      return;
+    }
+    this.chestScr.set(CHEST_X + 0.5, CHEST_Y + 1.35, CHEST_Z + 0.5);
+    this.chestScr.project(this.camera);
+    const behind = this.chestScr.z > 1;
+    const el = this.renderer.domElement;
+    const x = (this.chestScr.x * 0.5 + 0.5) * el.clientWidth;
+    const y = (-this.chestScr.y * 0.5 + 0.5) * el.clientHeight;
+    const onScreen =
+      !behind &&
+      x > -40 &&
+      x < el.clientWidth + 40 &&
+      y > -40 &&
+      y < el.clientHeight + 40;
+    const crafting =
+      this.mining &&
+      this.breakWait <= 0 &&
+      !!this.hit &&
+      this.hit.x === CHEST_X &&
+      this.hit.y === CHEST_Y &&
+      this.hit.z === CHEST_Z;
+    const craft = this.story.chestCraft;
+    const hp = 1 - craft;
+    const next = onScreen
+      ? { x, y, hp, craft, crafting }
+      : null;
+    const prev = this.chestBar;
+    if (
+      !prev !== !next ||
+      (next &&
+        prev &&
+        (Math.abs(prev.x - next.x) > 0.5 ||
+          Math.abs(prev.y - next.y) > 0.5 ||
+          Math.abs(prev.hp - next.hp) > 0.002 ||
+          Math.abs(prev.craft - next.craft) > 0.002 ||
+          prev.crafting !== next.crafting))
+    ) {
+      this.chestBar = next;
       this.hudDirty = true;
     }
   }
@@ -1572,6 +1677,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     if (!this.world.set(x, y, z, block)) return;
     this.rebuildAround(x, z);
     if (block === AIR) this.burst(x, y, z, prev);
+    this.opts.onWorldDirty?.();
     if (sync) {
       this.p2p.send({ t: "block", x, y, z, block } satisfies NetMsg);
       void applyEdit({
@@ -1983,6 +2089,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       placeCharge: this.placeCharge,
       placeIntent: this.placeArmed && !this.placing,
       breakCharge: this.breakCharge,
+      chestBar: this.chestBar,
       counts: palette.map((b) => countOf(this.story, b)),
       fridayUnlocked: this.story.friday && this.opts.isCreator,
       hatPrompt: this.hatPrompt,

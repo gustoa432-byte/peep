@@ -2,8 +2,12 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { WORLD_ID_RE } from "@/lib/peep/constants";
-import { getPlayerId } from "@/lib/peep/player-id";
+import { loadWorldFromServer } from "@/lib/peep/lazy-save";
+import { getPlayerId, getTelegramSaveId } from "@/lib/peep/player-id";
+import type { Story } from "@/lib/peep/progress";
 import { rememberWorld } from "@/lib/peep/remember-world";
+import { initTelegramWebApp } from "@/lib/peep/telegram";
+import { takeTelegramInventory } from "@/lib/peep/tg-boot-cache";
 import type { JoinResult } from "@/lib/peep/types";
 import { joinWorld } from "@/lib/peep/world.functions";
 
@@ -20,27 +24,40 @@ export const Route = createFileRoute("/world/$worldId")({
 function WorldPage() {
   const { worldId } = Route.useParams();
   const valid = WORLD_ID_RE.test(worldId);
-  const [playerId] = useState(() => getPlayerId());
+  const [playerId] = useState(() => {
+    initTelegramWebApp();
+    return getPlayerId();
+  });
+  const [inventoryOverride] = useState<Story | null>(() => takeTelegramInventory(worldId));
   const [result, setResult] = useState<JoinResult | "loading" | "error">(
     valid ? "loading" : { ok: false, error: "not_found" },
   );
+  const [remoteInv, setRemoteInv] = useState<Story | null>(null);
 
   useEffect(() => {
     if (!valid) return;
     let cancelled = false;
-    void joinWorld({ data: { worldId, playerId } })
-      .then((r) => {
+    const tg = getTelegramSaveId();
+    void (async () => {
+      try {
+        if (tg && !inventoryOverride) {
+          const snap = await loadWorldFromServer(tg);
+          if (!cancelled && snap.ok && !snap.empty && snap.world_id === worldId) {
+            setRemoteInv(snap.inventory);
+          }
+        }
+        const r = await joinWorld({ data: { worldId, playerId } });
         if (cancelled) return;
         if (r.ok) rememberWorld(worldId, r.isCreator ? "mine" : "visited");
         setResult(r);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setResult("error");
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [worldId, playerId, valid]);
+  }, [worldId, playerId, valid, inventoryOverride]);
 
   if (result === "loading") {
     return (
@@ -92,6 +109,7 @@ function WorldPage() {
         generation={result.generation}
         isCreator={result.isCreator}
         playerId={playerId}
+        inventoryOverride={inventoryOverride ?? remoteInv}
       />
     </Suspense>
   );

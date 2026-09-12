@@ -5,10 +5,12 @@ export type Story = {
   friday: boolean;
   hat: boolean;
   chest: boolean;
+  /** 0–1 progress toward opening the buried chest. */
+  chestCraft: number;
 };
 
 function empty(): Story {
-  return { counts: {}, friday: false, hat: false, chest: false };
+  return { counts: {}, friday: false, hat: false, chest: false, chestCraft: 0 };
 }
 
 function slot(worldId: string, playerId: string): string {
@@ -34,6 +36,7 @@ export function loadStory(worldId: string, playerId: string): Story {
       friday: Boolean(p.friday || p.chest),
       hat: Boolean(p.hat),
       chest: Boolean(p.chest),
+      chestCraft: Math.min(1, Math.max(0, Number(p.chestCraft) || 0)),
     };
   } catch {
     return empty();

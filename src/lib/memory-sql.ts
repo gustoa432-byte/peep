@@ -45,6 +45,15 @@ type RtcSignal = {
   created_at: number;
 };
 
+type TgSave = {
+  tg_user_id: string;
+  world_id: string | null;
+  seed: number | null;
+  edits: unknown;
+  inventory: unknown;
+  updated_at: number;
+};
+
 type Store = {
   worlds: Map<string, World>;
   edits: Edit[];
@@ -55,6 +64,7 @@ type Store = {
   rtcPeers: RtcPeer[];
   rtcSignals: RtcSignal[];
   signalSeq: number;
+  tgSaves: Map<string, TgSave>;
 };
 
 const globalRef = globalThis as typeof globalThis & { __peepMemoryStore__?: Store };
@@ -70,8 +80,11 @@ function store(): Store {
     rtcPeers: [],
     rtcSignals: [],
     signalSeq: 1,
+    tgSaves: new Map(),
   };
-  return globalRef.__peepMemoryStore__;
+  const s = globalRef.__peepMemoryStore__;
+  if (!s.tgSaves) s.tgSaves = new Map();
+  return s;
 }
 
 function norm(text: string): string {
@@ -435,6 +448,49 @@ export function createMemorySql(): Sql {
           kind: s.kind,
           payload: s.payload,
         })) as T[];
+    }
+
+    if (q.startsWith("insert into peep_tg_saves")) {
+      const tg_user_id = String(p(params, "1"));
+      let edits: unknown = p(params, "4");
+      let inventory: unknown = p(params, "5");
+      if (typeof edits === "string") {
+        try {
+          edits = JSON.parse(edits);
+        } catch {
+          /* keep */
+        }
+      }
+      if (typeof inventory === "string") {
+        try {
+          inventory = JSON.parse(inventory);
+        } catch {
+          /* keep */
+        }
+      }
+      db.tgSaves.set(tg_user_id, {
+        tg_user_id,
+        world_id: (p(params, "2") as string | null) ?? null,
+        seed: p(params, "3") == null ? null : Number(p(params, "3")),
+        edits,
+        inventory,
+        updated_at: now,
+      });
+      return [];
+    }
+
+    if (q.startsWith("select world_id, seed, edits, inventory from peep_tg_saves")) {
+      const row = db.tgSaves.get(String(p(params, "1")));
+      return (row
+        ? [
+            {
+              world_id: row.world_id,
+              seed: row.seed,
+              edits: row.edits,
+              inventory: row.inventory,
+            },
+          ]
+        : []) as T[];
     }
 
     if (q.startsWith("delete from webrtc_signals")) {

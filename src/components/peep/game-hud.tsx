@@ -63,6 +63,8 @@ export function GameHud({
   inviteUrl,
   onEmote,
   onReset,
+  onSaveWorld,
+  saveHint = null,
   fullscreen,
   onFullscreen,
 }: {
@@ -76,6 +78,8 @@ export function GameHud({
   inviteUrl: string;
   onEmote: (kind: EmoteKind) => void;
   onReset: () => Promise<boolean>;
+  onSaveWorld?: () => void;
+  saveHint?: string | null;
   fullscreen: boolean;
   onFullscreen: () => void;
 }) {
@@ -265,6 +269,43 @@ export function GameHud({
         WASD · мышь · пробел · ломай чтобы брать · зажать ПКМ ставить · 1–7 · E/R/T
       </p>
 
+      {hud.chestBar ? (
+        <div
+          className="pointer-events-none absolute z-30 w-28 -translate-x-1/2 -translate-y-full"
+          style={{ left: hud.chestBar.x, top: hud.chestBar.y }}
+        >
+          <p className="mb-1 text-center font-mono text-[10px] uppercase tracking-widest text-fg-on-ink drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+            {hud.chestBar.crafting ? "открытие…" : "сундук"}
+          </p>
+          <div className="h-2.5 overflow-hidden rounded-sm border border-fg-on-ink/40 bg-bg-deep/80 shadow-[0_1px_4px_rgba(0,0,0,0.55)]">
+            <div
+              className="h-full origin-left bg-[#5ecf62] transition-[width] duration-75"
+              style={{
+                width: `${Math.round(hud.chestBar.hp * 100)}%`,
+                background:
+                  hud.chestBar.hp > 0.45
+                    ? "#5ecf62"
+                    : hud.chestBar.hp > 0.2
+                      ? "#d4a017"
+                      : "#e25555",
+              }}
+            />
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-sm border border-fg-on-ink/35 bg-bg-deep/75">
+            <div
+              className={cn(
+                "h-full bg-[#f0c14a] transition-[width] duration-75",
+                hud.chestBar.crafting && "animate-pulse",
+              )}
+              style={{ width: `${Math.round(hud.chestBar.craft * 100)}%` }}
+            />
+          </div>
+          <p className="mt-0.5 text-center font-mono text-[10px] tabular-nums text-fg-on-ink/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+            {Math.round(hud.chestBar.craft * 100)}%
+          </p>
+        </div>
+      ) : null}
+
       {hud.hatPrompt && !hud.hatBusy ? (
         <div className="pointer-events-auto absolute bottom-36 left-1/2 z-40 w-[min(280px,calc(100%-2rem))] -translate-x-1/2">
           <Button
@@ -379,20 +420,33 @@ export function GameHud({
                 пятница
               </button>
             ) : null}
-            {hud.isCreator && hud.playing ? (
+            {hud.playing && (onSaveWorld || hud.isCreator) ? (
               <div className="mt-6 border-t-2 border-border-ink pt-5">
                 <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">остров</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettingsOpen(false);
-                    setConfirmReset(true);
-                  }}
-                  className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
-                >
-                  <IconReset className="size-4" />
-                  сбросить остров
-                </button>
+                {onSaveWorld ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSaveWorld();
+                    }}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                  >
+                    {saveHint ?? "сохранить мир"}
+                  </button>
+                ) : null}
+                {hud.isCreator ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      setConfirmReset(true);
+                    }}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
+                  >
+                    <IconReset className="size-4" />
+                    сбросить остров
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

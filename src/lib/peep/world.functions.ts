@@ -21,7 +21,7 @@ import type {
 } from "./types";
 
 const worldId = z.string().regex(WORLD_ID_RE);
-const playerId = z.string().regex(/^[a-zA-Z0-9_-]{4,32}$/);
+const playerId = z.string().regex(/^[a-zA-Z0-9_-]{4,48}$/);
 const blockCoord = z.object({
   worldId,
   x: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
