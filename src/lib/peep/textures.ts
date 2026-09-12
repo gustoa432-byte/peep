@@ -78,7 +78,7 @@ function pixHash(x: number, y: number, salt: number): number {
   return hash3(x, y, salt, salt * 13 + 7);
 }
 
-function pixelMod(kind: number, x: number, y: number): number {
+function pixelMod(kind: number, x: number, y: number, frame = 0): number {
   const a = pixHash(x, y, kind);
   const b = pixHash(x * 3 + 1, y * 2, kind + 4);
   if (kind === GRASS) {
@@ -92,37 +92,52 @@ function pixelMod(kind: number, x: number, y: number): number {
     return 0.78 + a * 0.16 + stripe;
   }
   if (kind === SAND) return 0.76 + a * 0.32 + (b > 0.88 ? 0.12 : 0);
+  if (kind === LEAVES) {
+    const ox = (x + frame * 5) & 15;
+    const oy = (y + frame * 3) & 15;
+    const rustle = pixHash(ox, oy, kind + frame * 9);
+    const clump = pixHash(Math.floor(ox / 4), Math.floor(oy / 4), 31 + frame);
+    return 0.58 + rustle * 0.46 + (clump > 0.5 ? 0.16 : -0.12);
+  }
   if (kind === CHEST) {
     const band = y > 6 && y < 10 ? 0.22 : 0;
-    const frame = x < 2 || x > 13 || y < 2 || y > 13 ? -0.18 : 0;
-    return 0.72 + a * 0.18 + band + frame;
+    const frameEdge = x < 2 || x > 13 || y < 2 || y > 13 ? -0.18 : 0;
+    return 0.72 + a * 0.18 + band + frameEdge;
   }
   if (kind === GOLD) return 0.88 + a * 0.22 + (b > 0.82 ? 0.14 : 0);
   return b > 0.72 ? 0.45 : 0.78 + a * 0.28;
 }
 
-/** Six 16×16 grayscale tiles in a row. 128 ≈ multiply 1.0. */
+/**
+ * 8×3 nearest atlas. Row 0 is stills; rows 1–2 are leaf rustle frames.
+ * 128 ≈ multiply 1.0.
+ */
 export function createBlockAtlas(): THREE.DataTexture {
   const tw = 16;
   const types = 8;
+  const frames = 3;
   const w = tw * types;
-  const data = new Uint8Array(w * tw * 4);
+  const h = tw * frames;
+  const data = new Uint8Array(w * h * 4);
   const kinds = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES, CHEST, GOLD];
-  for (let t = 0; t < types; t++) {
-    const kind = kinds[t]!;
-    for (let y = 0; y < tw; y++) {
-      for (let x = 0; x < tw; x++) {
-        const m = Math.min(1.35, Math.max(0.4, pixelMod(kind, x, y)));
-        const v = Math.round(Math.min(255, Math.max(0, m * 128)));
-        const i = (y * w + t * tw + x) * 4;
-        data[i] = v;
-        data[i + 1] = v;
-        data[i + 2] = v;
-        data[i + 3] = 255;
+  for (let row = 0; row < frames; row++) {
+    for (let t = 0; t < types; t++) {
+      const kind = kinds[t]!;
+      const frame = kind === LEAVES ? row : 0;
+      for (let y = 0; y < tw; y++) {
+        for (let x = 0; x < tw; x++) {
+          const m = Math.min(1.35, Math.max(0.4, pixelMod(kind, x, y, frame)));
+          const v = Math.round(Math.min(255, Math.max(0, m * 128)));
+          const i = ((row * tw + y) * w + t * tw + x) * 4;
+          data[i] = v;
+          data[i + 1] = v;
+          data[i + 2] = v;
+          data[i + 3] = 255;
+        }
       }
     }
   }
-  const tex = new THREE.DataTexture(data, w, tw, THREE.RGBAFormat);
+  const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   tex.generateMipmaps = false;
@@ -135,6 +150,7 @@ export function createBlockAtlas(): THREE.DataTexture {
 export const BLOCK_TEXEL_GLSL = /* glsl */ `
 float kind = floor(vKind + 0.1);
 float grass = step(0.5, kind) * (1.0 - step(1.5, kind));
+float leaf = step(5.5, kind) * (1.0 - step(6.5, kind));
 vec3 pn = abs(normalize(vPeepN));
 vec2 faceUV = mix(mix(vPeepW.xy, vPeepW.zy, step(pn.z, pn.x)), vPeepW.xz, step(max(pn.x, pn.z), pn.y));
 vec2 uv = fract(faceUV);
@@ -142,7 +158,11 @@ float side = 1.0 - smoothstep(0.55, 0.95, abs(vPeepN.y));
 float bot = smoothstep(0.55, 0.95, -vPeepN.y);
 float tile = clamp(kind - 1.0, 0.0, 7.0);
 tile = mix(tile, 1.0, grass * max(side, bot));
-vec2 aUv = vec2((tile + (uv.x * 15.0 + 0.5) / 16.0) / 8.0, (uv.y * 15.0 + 0.5) / 16.0);
+float frame = leaf * mod(floor(uTime * 2.0), 3.0);
+vec2 aUv = vec2(
+  (tile + (uv.x * 15.0 + 0.5) / 16.0) / 8.0,
+  (frame + (uv.y * 15.0 + 0.5) / 16.0) / 3.0
+);
 float m = texture2D(uAtlas, aUv).r * 2.0;
 diffuseColor.rgb *= m;
 float lip = grass * side * step(0.8, uv.y);

@@ -288,8 +288,9 @@ export class PeepGame {
       vertexColors: true,
       color: 0xffffff,
     });
-    this.material.customProgramCacheKey = () => "peep-atlas-v1";
+    this.material.customProgramCacheKey = () => "peep-atlas-v2";
     this.material.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = this.grainTime;
       shader.uniforms.uPeepTime = this.grainTime;
       shader.uniforms.uAtlas = { value: this.atlas };
       shader.vertexShader = `attribute float peepKind;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.vertexShader}`
@@ -304,7 +305,7 @@ vKind = peepKind;`,
           `#include <worldpos_vertex>
 vPeepW = (modelMatrix * vec4(transformed, 1.0)).xyz;`,
         );
-      shader.fragmentShader = `uniform float uPeepTime;\nuniform sampler2D uAtlas;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.fragmentShader}`;
+      shader.fragmentShader = `uniform float uTime;\nuniform float uPeepTime;\nuniform sampler2D uAtlas;\nvarying float vKind;\nvarying vec3 vPeepW;\nvarying vec3 vPeepN;\n${shader.fragmentShader}`;
       if (shader.fragmentShader.includes("#include <color_fragment>")) {
         shader.fragmentShader = shader.fragmentShader.replace(
           "#include <color_fragment>",
