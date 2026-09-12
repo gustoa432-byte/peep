@@ -20,6 +20,11 @@
   --color-block-sand: #d2b27a;
   --color-block-leaf: #3fa83c;
   --color-block-gold: #e2b84a;
+  --color-forge-wood: #8b5a2b;
+  --color-forge-metal: #808080;
+  --color-forge-terra: #b85c38;
+  --color-forge-gold: #ffd700;
+  --color-forge-cloth: #1a1612;
   --color-danger: #a33b2a;
   --font-display: "Syne", "Segoe UI", system-ui, sans-serif;
   --font-sans: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -87,6 +92,18 @@
   .peep-menu-panel {
     background: color-mix(in srgb, var(--color-surface) 72%, transparent);
     backdrop-filter: blur(4px);
+  }
+
+  .peep-grip-tag {
+    transform: translate(-50%, calc(-100% - 10px));
+    padding: 0.2rem 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--color-danger) 70%, white);
+    background: color-mix(in srgb, var(--color-surface-ink) 82%, transparent);
+    color: var(--color-fg-on-ink);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
   @media (prefers-reduced-motion: reduce) {
