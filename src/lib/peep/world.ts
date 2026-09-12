@@ -10,6 +10,7 @@ import {
   ISLAND_CORE,
   ISLAND_SHORE,
   LEAVES,
+  NEON,
   SAND,
   STONE,
   WATER_LEVEL,
@@ -179,6 +180,12 @@ export class VoxelWorld {
           data[localIdx(lx, y, lz)] = b;
         }
         if (x === CHEST_X && z === CHEST_Z) data[localIdx(lx, CHEST_Y, lz)] = CHEST;
+        // Test neon accent near spawn for Voxel Minimalist look.
+        const midX = Math.floor(WORLD_SX / 2);
+        const midZ = Math.floor(WORLD_SZ / 2);
+        if (x === midX + 2 && z === midZ && h + 1 < WORLD_SY) {
+          data[localIdx(lx, h + 1, lz)] = NEON;
+        }
         if (
           onIsland(x, z) &&
           !beach &&
