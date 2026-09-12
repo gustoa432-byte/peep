@@ -14,7 +14,7 @@ import {
 } from "@/components/peep/peep-icons";
 import { QrMark } from "@/components/peep/qr-mark";
 import { Button } from "@/components/ui/button";
-import { BARRIER, BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
+import { BARRIER, BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, NEON, WOOD } from "@/lib/peep/constants";
 import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,9 @@ function swatchStyle(block: number): { background: string } | undefined {
   if (block === WOOD) return { background: "linear-gradient(90deg, #8f5a30 0%, #c49254 46%, #8f5a30 52%, #c49254 100%)" };
   if (block === LEAVES) return { background: "linear-gradient(#5ed45a 55%, #2f8f34 55%)" };
   if (block === GOLD) return { background: "linear-gradient(#f0d36a 40%, #c4922a 40%)" };
+  if (block === NEON) {
+    return { background: "linear-gradient(135deg, #00e5ff 0%, #00e5ff 45%, #ff2bd6 45%, #ff2bd6 100%)" };
+  }
   return { background: swatch(block) };
 }
 

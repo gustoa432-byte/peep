@@ -21,8 +21,10 @@ export const CHEST = 7;
 export const GOLD = 8;
 /** Invisible solid — no mesh faces, placeable; physics treats it as solid. */
 export const BARRIER = 9;
+/** Test neon accent block (cyan top / magenta sides). */
+export const NEON = 10;
 
-export const BLOCK_COUNT = 9;
+export const BLOCK_COUNT = 10;
 
 export const BLOCK_NAMES = [
   "",
@@ -35,10 +37,11 @@ export const BLOCK_NAMES = [
   "Chest",
   "Gold",
   "Пусто",
+  "Neon",
 ] as const;
 
 /** Buildable types. Counts start at zero — you place what you dig. */
-export const BLOCK_PALETTE = [BARRIER, GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
+export const BLOCK_PALETTE = [BARRIER, GRASS, DIRT, STONE, WOOD, SAND, LEAVES, NEON] as const;
 
 export const HOTBAR_SLOTS = BLOCK_PALETTE.length + 1;
 
@@ -102,23 +105,28 @@ export function nextEditDelay(): number {
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 
 export const BLOCK_COLORS: Record<number, number> = {
-  [GRASS]: 0x68a85a,
-  [DIRT]: 0x8a5a38,
-  [STONE]: 0x7a7670,
-  [WOOD]: 0xb07a45,
-  [SAND]: 0xe0c48a,
-  [LEAVES]: 0x4db84a,
-  [CHEST]: 0x8a5a24,
-  [GOLD]: 0xe2b84a,
+  [GRASS]: 0xf0f2f5,
+  [DIRT]: 0xe8eaee,
+  [STONE]: 0xdde0e6,
+  [WOOD]: 0xf4f5f7,
+  [SAND]: 0xeef0f3,
+  [LEAVES]: 0xe4e7ec,
+  [CHEST]: 0xc8ccd4,
+  [GOLD]: 0xfff6d6,
+  [NEON]: 0x00e5ff,
 };
 
-export const SKY_ZENITH = 0x8eb8d4;
-export const SKY_HORIZON = 0xf3d7b0;
-export const FOG_COLOR = 0xe8d0b0;
-export const FOG_NEAR = 28;
-export const FOG_FAR = 104;
-export const SUN_COLOR = 0xffd6a0;
-export const WATER_SHALLOW = 0x6ebfb4;
-export const WATER_DEEP = 0x1b5368;
-export const WATER_FOAM = 0xe8f2ee;
-export const UNDERWATER_FOG = 0x163e4c;
+/** Voxel Minimalist sky / fog — dark graphite-indigo, mobile-cheap. */
+export const SKY_ZENITH = 0x1a1e2e;
+export const SKY_HORIZON = 0x2a3148;
+export const FOG_COLOR = 0x1e2336;
+export const FOG_NEAR = 22;
+export const FOG_FAR = 78;
+export const SUN_COLOR = 0xfff4e8;
+export const WATER_SHALLOW = 0x3d5a6e;
+export const WATER_DEEP = 0x152636;
+export const WATER_FOAM = 0xa8c0cc;
+export const UNDERWATER_FOG = 0x0e1a24;
+/** Cool fill + warm key for soft Lambert shading. */
+export const AMBIENT_COLOR = 0x8aa0c8;
+export const SUN_LIGHT_COLOR = 0xfff8f0;

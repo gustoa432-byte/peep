@@ -40,7 +40,7 @@ const EMPTY_HUD: HudState = {
   placeIntent: false,
   breakCharge: 0,
   chestBar: null,
-  counts: [0, 0, 0, 0, 0, 0],
+  counts: [0, 0, 0, 0, 0, 0, 0, 0],
   fridayUnlocked: false,
   hatPrompt: false,
   chestOffer: false,

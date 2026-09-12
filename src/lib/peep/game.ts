@@ -39,12 +39,15 @@ import {
   FOG_COLOR,
   FOG_FAR,
   FOG_NEAR,
+  AMBIENT_COLOR,
+  SUN_LIGHT_COLOR,
   GOLD,
   GRAVITY,
   GROUND_ACCEL,
   GROUND_FRICTION,
   JUMP_SPEED,
   MESH_PER_FRAME,
+  NEON,
   PLACE_DOUBLE_MS,
   nextEditDelay,
   PLACE_HOLD_S,
@@ -187,7 +190,7 @@ function createFilmGrain(): { mesh: THREE.Mesh; time: { value: number } } {
         float n = fract(sin(dot(uv + t * 113.0, vec2(12.9898, 78.233))) * 43758.5453);
         float n2 = fract(sin(dot(uv * 0.27 - t * 47.0, vec2(39.346, 11.135))) * 23421.63);
         float g = (n * 0.7 + n2 * 0.3) - 0.5;
-        gl_FragColor = vec4(vec3(0.62 + g * 0.9), 0.04);
+        gl_FragColor = vec4(vec3(0.55 + g * 0.7), 0.02);
       }
     `,
   });
@@ -318,6 +321,7 @@ export class PeepGame {
     this.story = opts.inventoryOverride
       ? structuredClone(opts.inventoryOverride)
       : loadStory(opts.worldId, opts.playerId);
+    if (countOf(this.story, NEON) <= 0) addBlock(this.story, NEON, 8);
     this.world = new VoxelWorld(opts.seed, opts.edits);
     if (this.story.chest) this.world.hideChest();
     if (opts.inventoryOverride) this.persist();
@@ -331,7 +335,7 @@ export class PeepGame {
       vertexColors: true,
       color: 0xffffff,
     });
-    this.material.customProgramCacheKey = () => "peep-atlas-v5";
+    this.material.customProgramCacheKey = () => "peep-minimal-v1";
     this.material.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = this.grainTime;
       shader.uniforms.uPeepTime = this.grainTime;
@@ -394,20 +398,21 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       alpha: false,
       powerPreference: "high-performance",
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     this.renderer.autoClear = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.NeutralToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
 
     this.fog = new THREE.Fog(FOG_COLOR, FOG_NEAR, FOG_FAR);
     this.scene.background = new THREE.Color(FOG_COLOR);
     this.scene.fog = this.fog;
     this.scene.add(this.terrain);
 
-    this.scene.add(new THREE.AmbientLight(0xffead2, 0.42));
-    const hemi = new THREE.HemisphereLight(0xfff1dc, 0x7a8478, 0.95);
-    const sun = new THREE.DirectionalLight(0xffd09a, 0.95);
+    // Soft cool fill + warm key — no shadows, no EffectComposer.
+    this.scene.add(new THREE.AmbientLight(AMBIENT_COLOR, 0.62));
+    const hemi = new THREE.HemisphereLight(0x9eb0d4, 0x2a303f, 0.35);
+    const sun = new THREE.DirectionalLight(SUN_LIGHT_COLOR, 0.88);
     sun.position.copy(SUN_DIR).multiplyScalar(40);
     this.scene.add(hemi, sun);
 

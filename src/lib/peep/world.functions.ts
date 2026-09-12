@@ -33,7 +33,7 @@ const blockCoord = z.object({
   x: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
   y: z.number().int().min(0).max(WORLD_SY - 1),
   z: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
-  block: z.number().int().min(0).max(9),
+  block: z.number().int().min(0).max(10),
 });
 
 const ALPH = "abcdefghjkmnpqrstuvwxyz23456789";

@@ -55,7 +55,8 @@ function cornerAO(
     cr = occluded(world, x + dx, y + dy, z + nz);
   }
   const ao = s1 && s2 ? 0 : 3 - (Number(s1) + Number(s2) + Number(cr));
-  return 0.74 + (ao / 3) * 0.26;
+  // Stronger vertex AO so white cubes read as separate volumes on mobile.
+  return 0.52 + (ao / 3) * 0.48;
 }
 
 type Axis = 0 | 1 | 2;
