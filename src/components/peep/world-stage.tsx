@@ -136,13 +136,13 @@ export function WorldStage({
     const el = stageRef.current;
     if (!el) return;
     if (!canFullscreen()) {
-      setFsHint("Этот браузер не умеет полноэкранный режим. Добавьте Peep на главный экран.");
+      setFsHint("Этот браузер не умеет полноэкранный режим. Добавьте Peepland на главный экран.");
       window.setTimeout(() => setFsHint(null), 3200);
       return;
     }
     const result = await toggleFullscreen(el);
     if (result === "denied") {
-      setFsHint("Браузер не пустил. Добавьте Peep на главный экран — откроется как приложение.");
+      setFsHint("Браузер не пустил. Добавьте Peepland на главный экран — откроется как приложение.");
       window.setTimeout(() => setFsHint(null), 3200);
       return;
     }

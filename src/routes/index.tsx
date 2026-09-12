@@ -215,7 +215,7 @@ function Home() {
           <aside className="peep-menu-panel mt-8 flex items-start gap-3 rounded-pixel border-2 border-border p-4 shadow-[var(--shadow-panel)]">
             <IconPhone className="mt-0.5 size-5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="font-display text-base font-semibold leading-tight">Добавить Peep на главный экран</p>
+              <p className="font-display text-base font-semibold leading-tight">Добавить Peepland на главный экран</p>
               <p className="mt-1 text-sm leading-relaxed text-muted">
                 Откроется как приложение: без строки браузера, ссылку искать не нужно.
               </p>
@@ -258,7 +258,7 @@ function Home() {
               onClick={() => void install.addToHome()}
               className="mt-3 flex min-h-11 items-center font-mono text-xs uppercase tracking-wide text-muted hover:text-primary"
             >
-              Добавить Peep на главный экран
+              Добавить Peepland на главный экран
             </button>
           ) : null}
         </footer>
