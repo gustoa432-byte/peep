@@ -152,14 +152,6 @@ async function loadHostPerms(
   return parseGuestPermissions(rows[0].guest_permissions);
 }
 
-export async function readGuestPermissionsForWorld(
-  worldIdValue: string,
-): Promise<GuestPermissions> {
-  const sql = await getSql();
-  const world = await readWorld(sql, worldIdValue);
-  return loadHostPerms(sql, world?.creatorId ?? null);
-}
-
 export const createWorld = createServerFn({ method: "POST" })
   .validator(z.object({ playerId }))
   .handler(async ({ data }): Promise<{ id: string; seed: number }> => {

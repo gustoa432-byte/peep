@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { getSql, type Sql } from "@/lib/db";
-import { readGuestPermissionsForWorld } from "@/lib/peep/world.functions";
+import { readGuestPermissionsForWorld } from "@/lib/peep/world-perms.server";
 import type { PeerRow, RtcPollResponse, SignalRow } from "./p2p";
 
 const ID = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
