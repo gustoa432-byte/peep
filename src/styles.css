@@ -25,6 +25,24 @@
   --color-forge-terra: #b85c38;
   --color-forge-gold: #ffd700;
   --color-forge-cloth: #1a1612;
+  --color-swatch-0: #1a1612;
+  --color-swatch-1: #3a332c;
+  --color-swatch-2: #8a7e72;
+  --color-swatch-3: #c4b8ac;
+  --color-swatch-4: #f3eee6;
+  --color-swatch-5: #e8c4a8;
+  --color-swatch-6: #8b5a2b;
+  --color-swatch-7: #8a5a38;
+  --color-swatch-8: #b85c38;
+  --color-swatch-9: #a33b2a;
+  --color-swatch-10: #5f7a53;
+  --color-swatch-11: #3fa83c;
+  --color-swatch-12: #d2b27a;
+  --color-swatch-13: #7a7670;
+  --color-swatch-14: #808080;
+  --color-swatch-15: #ffd700;
+  --color-swatch-16: #8eb8d4;
+  --color-swatch-17: #1b5368;
   --color-danger: #a33b2a;
   --font-display: "Syne", "Segoe UI", system-ui, sans-serif;
   --font-sans: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -104,6 +122,26 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
     white-space: nowrap;
+  }
+
+  .peep-color-input {
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--color-border-ink);
+    background: transparent;
+  }
+
+  .peep-color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  .peep-color-input::-webkit-color-swatch {
+    border: none;
+  }
+
+  .peep-forge-slider {
+    accent-color: var(--color-primary);
   }
 
   @media (prefers-reduced-motion: reduce) {
