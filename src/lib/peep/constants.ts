@@ -19,15 +19,33 @@ export const SAND = 5;
 export const LEAVES = 6;
 export const CHEST = 7;
 export const GOLD = 8;
+/** Invisible solid — no mesh faces, placeable; physics treats it as solid. */
+export const BARRIER = 9;
 
-export const BLOCK_COUNT = 8;
+export const BLOCK_COUNT = 9;
 
-export const BLOCK_NAMES = ["Пусто", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
+export const BLOCK_NAMES = [
+  "",
+  "Grass",
+  "Dirt",
+  "Stone",
+  "Wood",
+  "Sand",
+  "Leaves",
+  "Chest",
+  "Gold",
+  "Пусто",
+] as const;
 
 /** Buildable types. Counts start at zero — you place what you dig. */
-export const BLOCK_PALETTE = [AIR, GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
+export const BLOCK_PALETTE = [BARRIER, GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
 
 export const HOTBAR_SLOTS = BLOCK_PALETTE.length + 1;
+
+/** Empty for greedy meshing / AO (barrier is invisible but still solid). */
+export function isMeshEmpty(block: number): boolean {
+  return block === AIR || block === BARRIER;
+}
 
 export const CHEST_X = 24;
 export const CHEST_Y = 1;

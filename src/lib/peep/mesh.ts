@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { AIR, CHUNK_S, WORLD_SY } from "./constants";
+import { CHUNK_S, WORLD_SY, isMeshEmpty } from "./constants";
 import { faceTint, vertexGrain } from "./textures";
 import type { VoxelWorld } from "./world";
 
@@ -20,7 +20,7 @@ export function chunkCountZ(): number {
 }
 
 function occluded(world: VoxelWorld, x: number, y: number, z: number): boolean {
-  return world.get(x, y, z) !== AIR;
+  return !isMeshEmpty(world.get(x, y, z));
 }
 
 function cornerAO(
@@ -100,7 +100,8 @@ export function buildChunkGeometry(world: VoxelWorld, cx: number, cz: number): T
           const nz = axis === 2 ? sign : 0;
           const block = world.get(x, y, z);
           const neighbor = world.get(x + nx, y + ny, z + nz);
-          mask[uu + vv * du] = block !== AIR && neighbor === AIR ? block : 0;
+          mask[uu + vv * du] =
+            !isMeshEmpty(block) && isMeshEmpty(neighbor) ? block : 0;
         }
       }
 
