@@ -1,6 +1,7 @@
 {
-  "title": "Peep",
+  "title": "Peepland",
   "type": "x:game",
   "card": "custom",
-  "color": "5f7a53"
+  "color": "f0c878",
+  "description": "Peepland — альтернативная история великой стройки. Один мир, два человека, одна ссылка."
 }
