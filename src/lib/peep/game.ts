@@ -18,12 +18,11 @@ import { PeepAudio } from "./audio";
 import {
   AIR,
   BARRIER,
-  BHOP_AIR_CONTROL,
   BHOP_AIR_CROUCH_GRAVITY,
-  BHOP_MAX,
-  BHOP_STEP,
-  BHOP_WALL_SPEED_FRAC,
-  BHOP_WINDOW_S,
+  BHOP_AIR_DRAG,
+  BHOP_AIR_TURN,
+  BHOP_BOUNCE_MUL,
+  BHOP_MAX_MUL,
   BLOCK_COLORS,
   BLOCK_PALETTE,
   BREAK_HOLD_S,
@@ -38,6 +37,8 @@ import {
   FOG_NEAR,
   GOLD,
   GRAVITY,
+  GROUND_ACCEL,
+  GROUND_FRICTION,
   JUMP_SPEED,
   MESH_PER_FRAME,
   PLACE_DOUBLE_MS,
@@ -234,9 +235,8 @@ export class PeepGame {
   private pos = new THREE.Vector3();
   private vel = new THREE.Vector3();
   private onGround = false;
-  private bhopMultiplier = 1;
-  private jumpBuffer = 0;
-  private landWindow = 0;
+  /** One-shot jump from touch / Space tap while airborne → fire on next land. */
+  private jumpQueued = false;
   private crouching = false;
   private crouchHeld = false;
   /** Touch stick axis: +x strafes right, +z walks forward. Additive with WASD. */
@@ -563,8 +563,8 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   jump() {
     if (!this.playing || this.cinematic) return;
-    this.jumpBuffer = BHOP_WINDOW_S;
-    this.tryBunnyJump();
+    if (this.onGround) this.doArcadeJump(true);
+    else this.jumpQueued = true;
   }
 
   /** Mobile / overlay crouch hold. Desktop also uses Ctrl/Shift. */
@@ -572,32 +572,76 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.crouchHeld = on;
   }
 
-  private tryBunnyJump(): boolean {
-    if (!this.playing || this.cinematic) return false;
-    const canJump = this.onGround || this.landWindow > 0;
-    if (!canJump || this.jumpBuffer <= 0) return false;
+  private jumpWanted(): boolean {
+    return this.jumpQueued || this.held("Space");
+  }
 
-    const rhythmic = this.landWindow > 0 || (!this.onGround && this.jumpBuffer > 0);
-    if (rhythmic && this.bhopMultiplier > 1 - 1e-6) {
-      this.bhopMultiplier = Math.min(BHOP_MAX, this.bhopMultiplier + BHOP_STEP);
-    } else if (rhythmic) {
-      this.bhopMultiplier = Math.min(BHOP_MAX, 1 + BHOP_STEP);
+  /** Arcade bhop takeoff: optional momentum bump, no tight timing window. */
+  private doArcadeJump(allowBoost: boolean): boolean {
+    if (!this.playing || this.cinematic || !this.onGround) return false;
+
+    let hx = this.vel.x;
+    let hz = this.vel.z;
+    let speed = Math.hypot(hx, hz);
+    const moving = this.moveIntentMag() > 0.05;
+
+    if (allowBoost && moving && speed > WALK_SPEED * 0.75) {
+      speed = Math.min(speed * BHOP_BOUNCE_MUL, WALK_SPEED * BHOP_MAX_MUL);
+      if (Math.hypot(hx, hz) > 0.05) {
+        const s = speed / Math.hypot(hx, hz);
+        hx *= s;
+        hz *= s;
+      }
+    } else if (speed < WALK_SPEED * 0.35 && moving) {
+      const wish = this.wishDir();
+      hx = wish.x * WALK_SPEED * (this.crouching ? CROUCH_SPEED_MUL : 1);
+      hz = wish.z * WALK_SPEED * (this.crouching ? CROUCH_SPEED_MUL : 1);
     }
 
-    const horiz = Math.hypot(this.vel.x, this.vel.z);
-    const wish = Math.max(horiz, WALK_SPEED * this.bhopMultiplier);
-    if (horiz > 0.05) {
-      const s = wish / horiz;
-      this.vel.x *= s;
-      this.vel.z *= s;
-    }
-
+    this.vel.x = hx;
+    this.vel.z = hz;
     this.vel.y = JUMP_SPEED;
     this.onGround = false;
-    this.jumpBuffer = 0;
-    this.landWindow = 0;
+    this.jumpQueued = false;
     this.audio.jump();
     return true;
+  }
+
+  private moveIntentMag(): number {
+    let fwd = 0;
+    let strafe = 0;
+    if (this.held("KeyW") || this.held("ArrowUp")) fwd += 1;
+    if (this.held("KeyS") || this.held("ArrowDown")) fwd -= 1;
+    if (this.held("KeyD") || this.held("ArrowRight")) strafe += 1;
+    if (this.held("KeyA") || this.held("ArrowLeft")) strafe -= 1;
+    fwd += this.moveZ;
+    strafe += this.moveX;
+    return Math.hypot(fwd, strafe);
+  }
+
+  private wishDir(): { x: number; z: number; mag: number } {
+    const fwdX = -Math.sin(this.yaw);
+    const fwdZ = -Math.cos(this.yaw);
+    const rightX = Math.cos(this.yaw);
+    const rightZ = -Math.sin(this.yaw);
+    let fwd = 0;
+    let strafe = 0;
+    if (this.held("KeyW") || this.held("ArrowUp")) fwd += 1;
+    if (this.held("KeyS") || this.held("ArrowDown")) fwd -= 1;
+    if (this.held("KeyD") || this.held("ArrowRight")) strafe += 1;
+    if (this.held("KeyA") || this.held("ArrowLeft")) strafe -= 1;
+    fwd += this.moveZ;
+    strafe += this.moveX;
+    const mag = Math.hypot(fwd, strafe);
+    if (mag > 1e-6) {
+      fwd /= mag;
+      strafe /= mag;
+    }
+    return {
+      x: fwdX * fwd + rightX * strafe,
+      z: fwdZ * fwd + rightZ * strafe,
+      mag: Math.min(1, mag),
+    };
   }
 
   private playerHeight(): number {
@@ -774,6 +818,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private onBlur() {
     this.keys.clear();
+    this.jumpQueued = false;
     this.dragging = false;
     this.moveX = 0;
     this.moveZ = 0;
@@ -1049,94 +1094,100 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     }
 
     this.updateCrouchState();
-    if (this.jumpBuffer > 0) this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
-    if (this.landWindow > 0) this.landWindow = Math.max(0, this.landWindow - dt);
-
-    // Yaw 0 looks down -Z, so forward is (-sin, -cos) and right is (cos, -sin).
-    // Keep the pair in this order: swapping it is what inverts A/D.
-    const fwdX = -Math.sin(this.yaw);
-    const fwdZ = -Math.cos(this.yaw);
-    const rightX = Math.cos(this.yaw);
-    const rightZ = -Math.sin(this.yaw);
-
-    let fwd = 0;
-    let strafe = 0;
-    if (this.held("KeyW") || this.held("ArrowUp")) fwd += 1;
-    if (this.held("KeyS") || this.held("ArrowDown")) fwd -= 1;
-    if (this.held("KeyD") || this.held("ArrowRight")) strafe += 1;
-    if (this.held("KeyA") || this.held("ArrowLeft")) strafe -= 1;
-    fwd += this.moveZ;
-    strafe += this.moveX;
-
-    const mag = Math.hypot(fwd, strafe);
-    if (mag > 1) {
-      fwd /= mag;
-      strafe /= mag;
-    }
-
-    const wishX = fwdX * fwd + rightX * strafe;
-    const wishZ = fwdZ * fwd + rightZ * strafe;
-    const groundSpeed =
-      WALK_SPEED * this.bhopMultiplier * (this.crouching ? CROUCH_SPEED_MUL : 1);
-
-    if (this.held("Space")) this.jumpBuffer = Math.max(this.jumpBuffer, BHOP_WINDOW_S * 0.5);
-
+    const wish = this.wishDir();
     const wasGround = this.onGround;
     const fallSpeed = this.vel.y;
-    const speedBefore = Math.hypot(this.vel.x, this.vel.z);
 
     if (this.onGround) {
       this.vel.y -= GRAVITY * dt;
-      if (!this.tryBunnyJump()) {
-        this.vel.x = wishX * groundSpeed;
-        this.vel.z = wishZ * groundSpeed;
+      if (this.jumpWanted()) {
+        this.doArcadeJump(true);
+      } else {
+        const walk = WALK_SPEED * (this.crouching ? CROUCH_SPEED_MUL : 1);
+        let hx = this.vel.x;
+        let hz = this.vel.z;
+        let speed = Math.hypot(hx, hz);
+
+        if (wish.mag > 0.05) {
+          const tx = wish.x * walk;
+          const tz = wish.z * walk;
+          const t = 1 - Math.exp(-GROUND_ACCEL * dt);
+          hx += (tx - hx) * t;
+          hz += (tz - hz) * t;
+          // Coming in hot from bhop: bleed down toward walk, keep a short slide.
+          speed = Math.hypot(hx, hz);
+          if (speed > walk) {
+            const damp = Math.exp(-GROUND_FRICTION * 0.55 * dt);
+            const keep = walk + (speed - walk) * damp;
+            const s = keep / speed;
+            hx *= s;
+            hz *= s;
+          }
+        } else if (speed > 0.05) {
+          const damp = Math.exp(-GROUND_FRICTION * dt);
+          hx *= damp;
+          hz *= damp;
+          if (Math.hypot(hx, hz) < 0.08) {
+            hx = 0;
+            hz = 0;
+          }
+        } else {
+          hx = 0;
+          hz = 0;
+        }
+        this.vel.x = hx;
+        this.vel.z = hz;
       }
     } else {
-      // Air: keep momentum, steer gently; crouch softens gravity for long jumps.
-      if (mag > 0.05) {
-        const airSpeed = WALK_SPEED * this.bhopMultiplier;
-        this.vel.x += wishX * airSpeed * BHOP_AIR_CONTROL * dt;
-        this.vel.z += wishZ * airSpeed * BHOP_AIR_CONTROL * dt;
-        const cap = airSpeed * 1.35;
-        const hz = Math.hypot(this.vel.x, this.vel.z);
-        if (hz > cap) {
-          this.vel.x = (this.vel.x / hz) * cap;
-          this.vel.z = (this.vel.z / hz) * cap;
+      let hx = this.vel.x;
+      let hz = this.vel.z;
+      let speed = Math.hypot(hx, hz);
+
+      if (wish.mag > 0.05) {
+        if (speed < 0.12) {
+          hx = wish.x * WALK_SPEED * 0.45;
+          hz = wish.z * WALK_SPEED * 0.45;
+        } else {
+          // Preserve speed; gently turn the velocity vector toward wish.
+          const dx = hx / speed;
+          const dz = hz / speed;
+          const t = 1 - Math.exp(-BHOP_AIR_TURN * dt);
+          let nx = dx + (wish.x - dx) * t;
+          let nz = dz + (wish.z - dz) * t;
+          const nlen = Math.hypot(nx, nz) || 1;
+          nx /= nlen;
+          nz /= nlen;
+          hx = nx * speed;
+          hz = nz * speed;
         }
+      } else if (speed > 0.05) {
+        speed *= Math.exp(-BHOP_AIR_DRAG * dt);
+        const cur = Math.hypot(hx, hz) || 1;
+        hx = (hx / cur) * speed;
+        hz = (hz / cur) * speed;
       }
+
+      this.vel.x = hx;
+      this.vel.z = hz;
       const gMul = this.crouching ? BHOP_AIR_CROUCH_GRAVITY : 1;
       this.vel.y -= GRAVITY * gMul * dt;
-      this.tryBunnyJump();
     }
 
     this.collide(dt);
 
-    const speedAfter = Math.hypot(this.vel.x, this.vel.z);
-    if (speedBefore > WALK_SPEED * 0.85 && speedAfter < speedBefore * BHOP_WALL_SPEED_FRAC) {
-      this.bhopMultiplier = 1;
-    }
-
     if (!wasGround && this.onGround) {
-      this.landWindow = BHOP_WINDOW_S;
       if (fallSpeed < -3) this.audio.land(this.groundBlock());
-      if (this.jumpBuffer > 0 || this.held("Space")) {
-        this.tryBunnyJump();
-      } else {
-        // Missed the window → dump speed stack next frame after timer expires.
-      }
-    }
-
-    if (this.onGround && this.landWindow <= 0 && this.jumpBuffer <= 0 && !this.held("Space")) {
-      this.bhopMultiplier = 1;
+      // Auto-bhop: held Space / queued tap fires on the land frame.
+      if (this.jumpWanted()) this.doArcadeJump(true);
     }
 
     if (this.pos.y < -6) {
       const s = this.world.spawn();
       this.pos.set(s.x, s.y, s.z);
       this.vel.set(0, 0, 0);
-      this.bhopMultiplier = 1;
+      this.jumpQueued = false;
     }
-    const moving = mag > 0.05 && this.onGround;
+    const moving = wish.mag > 0.05 && this.onGround;
     this.bob += moving ? dt * 8 : -this.bob * dt * 6;
     if (moving) {
       this.stepAcc += Math.hypot(this.vel.x, this.vel.z) * dt;
