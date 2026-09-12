@@ -15,7 +15,7 @@ import {
 } from "@/lib/peep/remember-world";
 import { useInstallPrompt } from "@/lib/peep/install";
 import { readOrient, usePhoneUi, type OrientMode } from "@/lib/peep/settings";
-import { initTelegramWebApp } from "@/lib/peep/telegram";
+import { initTelegramWebApp, getTelegramStartParam, parseInviteHostId } from "@/lib/peep/telegram";
 import { stashTelegramInventory } from "@/lib/peep/tg-boot-cache";
 import { createWorld, deleteWorld } from "@/lib/peep/world.functions";
 
@@ -41,7 +41,7 @@ function Home() {
     setNudge(shouldShowInstallNudge());
   }, []);
 
-  /** Telegram Mini App: load personal snapshot or create a fresh island. */
+  /** Telegram Mini App: invite join or load/create personal island. */
   useEffect(() => {
     initTelegramWebApp();
     const tg = getTelegramSaveId();
@@ -51,6 +51,20 @@ function Home() {
     setBusy(true);
     void (async () => {
       try {
+        const inviteHost = parseInviteHostId(getTelegramStartParam());
+        if (inviteHost) {
+          const snap = await loadWorldFromServer(inviteHost);
+          if (cancelled) return;
+          if (!snap.ok || snap.empty || !snap.world_id) {
+            setError("Остров хозяина ещё не сохранён. Попросите ссылку позже.");
+            setBusy(false);
+            setTgBoot(false);
+            return;
+          }
+          await navigate({ to: "/world/$worldId", params: { worldId: snap.world_id } });
+          return;
+        }
+
         const snap = await loadWorldFromServer(tg);
         if (cancelled) return;
         if (snap.ok && !snap.empty && snap.world_id) {

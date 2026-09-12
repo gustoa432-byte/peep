@@ -13,18 +13,10 @@ import { auth, authConfigured } from "./server";
  */
 
 /** True when a real database is configured server-side. */
-const databaseConfigured = Boolean(process.env.DATABASE_URL?.trim());
+const databaseConfigured = false;
 
 /** Re-export so callers can branch on it without importing `server.ts`. */
 export { authConfigured };
-
-if (databaseConfigured && !authConfigured) {
-  console.error(
-    "[auth] DATABASE_URL is set but auth is disabled (VITE_AUTH_ENABLED=false) " +
-      "— requireUserId() will reject every request (fail closed) rather than " +
-      "share one dev user on a real database.",
-  );
-}
 
 /** Dev fallback user id, used only when auth is disabled (VITE_AUTH_ENABLED=false). */
 export const DEV_USER_ID = "dev-user";

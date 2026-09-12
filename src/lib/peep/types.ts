@@ -45,6 +45,10 @@ export type HudState = {
   hatPrompt: boolean;
   chestOffer: boolean;
   hatBusy: boolean;
+  /** Host island controls. */
+  guestBuildAllowed: boolean;
+  islandLocked: boolean;
+  fridayOnline: boolean;
 };
 
 export type NetPos = {
@@ -58,6 +62,15 @@ export type NetPos = {
 
 export type NetBlock = {
   t: "block";
+  x: number;
+  y: number;
+  z: number;
+  block: number;
+};
+
+/** Guest → host: propose a block change (host is authority). */
+export type NetBlockReq = {
+  t: "block_req";
   x: number;
   y: number;
   z: number;
@@ -78,7 +91,26 @@ export type NetLook = {
   hat: boolean;
 };
 
-export type NetMsg = NetPos | NetBlock | NetHello | NetEmote | NetLook;
+export type NetKick = {
+  t: "kick";
+  reason?: string;
+};
+
+export type NetPerms = {
+  t: "perms";
+  buildAllowed: boolean;
+  locked: boolean;
+};
+
+export type NetMsg =
+  | NetPos
+  | NetBlock
+  | NetBlockReq
+  | NetHello
+  | NetEmote
+  | NetLook
+  | NetKick
+  | NetPerms;
 
 export type PresencePlayer = {
   playerId: string;
@@ -89,19 +121,9 @@ export type PresencePlayer = {
   pitch: number;
 };
 
-export type JoinOk = {
-  ok: true;
-  seed: number;
-  edits: BlockEdit[];
-  /** World version at join. Later polls ask for edits with cursor > this. */
-  cursor: number;
-  generation: number;
-  isCreator: boolean;
-};
-
 export type ApplyEditResult =
   | { ok: true; cursor: number }
-  | { ok: false; error: "rate" | "not_found" };
+  | { ok: false; error: "rate" | "not_found" | "forbidden" };
 
 export type EditPoll = {
   generation: number;
@@ -120,7 +142,22 @@ export type MetricName =
 
 export type JoinErr = {
   ok: false;
-  error: "not_found" | "full";
+  error: "not_found" | "full" | "locked" | "banned";
+};
+
+export type JoinOk = {
+  ok: true;
+  seed: number;
+  edits: BlockEdit[];
+  /** World version at join. Later polls ask for edits with cursor > this. */
+  cursor: number;
+  generation: number;
+  isCreator: boolean;
+  guestPermissions: {
+    locked: boolean;
+    buildAllowed: boolean;
+    banned: string[];
+  };
 };
 
 export type JoinResult = JoinOk | JoinErr;

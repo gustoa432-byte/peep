@@ -85,6 +85,22 @@ function WorldPage() {
         />
       );
     }
+    if (result.error === "locked") {
+      return (
+        <ErrorScreen
+          title="Остров закрыт"
+          body="Хозяин закрыл остров. Новые гости не могут войти."
+        />
+      );
+    }
+    if (result.error === "banned") {
+      return (
+        <ErrorScreen
+          title="Нет доступа"
+          body="Хозяин выгнал вас с этого острова."
+        />
+      );
+    }
     return (
       <ErrorScreen
         title="World not found"
@@ -110,6 +126,8 @@ function WorldPage() {
         isCreator={result.isCreator}
         playerId={playerId}
         inventoryOverride={inventoryOverride ?? remoteInv}
+        guestBuildAllowed={result.guestPermissions.buildAllowed}
+        islandLocked={result.guestPermissions.locked}
       />
     </Suspense>
   );

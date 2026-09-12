@@ -1,17 +1,9 @@
 /**
- * WebRTC signaling over the app database (Neon deployed, PGLite in preview).
- * Only rendezvous traffic passes through here — roster + SDP/ICE relay while a
- * mesh forms; game data then flows peer-to-peer. DB-backed so any serverless
- * instance can serve any poll. Mount at /api/rtc (see the multiplayer-p2p
- * skill); the client side lives in `@/lib/multiplayer`.
- *
- * The GET poll is the whole peer lifecycle: the first poll (since=0) IS the
- * join — it registers the peer, returns the roster, and prunes stale rows.
- * Peer ids are random per mount, so a fresh inbox never has old signals to
- * skip and no join/cursor handshake is needed.
+ * WebRTC signaling over SQLite. Rendezvous only — game data is P2P.
  */
 import { z } from "zod";
 import { getSql, type Sql } from "@/lib/db";
+import { readGuestPermissionsForWorld } from "@/lib/peep/world.functions";
 import type { PeerRow, RtcPollResponse, SignalRow } from "./p2p";
 
 const ID = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
@@ -31,49 +23,17 @@ const postSchema = z.discriminatedUnion("op", [signalSchema, leaveSchema]);
 const PEER_TTL_SECONDS = 30;
 const SIGNAL_TTL_SECONDS = 60;
 
-const globalRef = globalThis as typeof globalThis & {
-  __rtcSchemaPromise__?: Promise<void>;
-};
-
-function ensureSchema(sql: Sql): Promise<void> {
-  globalRef.__rtcSchemaPromise__ ??= (async () => {
-    await sql.query(
-      `CREATE TABLE IF NOT EXISTS webrtc_peers (
-         room TEXT NOT NULL,
-         peer_id TEXT NOT NULL,
-         name TEXT NOT NULL DEFAULT '',
-         last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
-         PRIMARY KEY (room, peer_id)
-       )`,
-    );
-    await sql.query(
-      `CREATE TABLE IF NOT EXISTS webrtc_signals (
-         id BIGSERIAL PRIMARY KEY,
-         room TEXT NOT NULL,
-         to_peer TEXT NOT NULL,
-         from_peer TEXT NOT NULL,
-         kind TEXT NOT NULL,
-         payload JSONB NOT NULL,
-         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-       )`,
-    );
-    await sql.query(
-      `CREATE INDEX IF NOT EXISTS webrtc_signals_inbox
-         ON webrtc_signals (room, to_peer, id)`,
-    );
-  })().catch((err) => {
-    globalRef.__rtcSchemaPromise__ = undefined;
-    throw err;
-  });
-  return globalRef.__rtcSchemaPromise__;
+function nowMs(): number {
+  return Date.now();
 }
 
 async function roster(sql: Sql, room: string): Promise<PeerRow[]> {
+  const cutoff = nowMs() - PEER_TTL_SECONDS * 1000;
   const rows = await sql.query<{ peer_id: string; name: string }>(
     `SELECT peer_id, name FROM webrtc_peers
-     WHERE room = $1 AND last_seen > now() - make_interval(secs => $2)
+     WHERE room = $1 AND last_seen > $2
      ORDER BY peer_id LIMIT 32`,
-    [room, PEER_TTL_SECONDS],
+    [room, cutoff],
   );
   return rows.map((r) => ({ id: r.peer_id, name: r.name }));
 }
@@ -81,21 +41,19 @@ async function roster(sql: Sql, room: string): Promise<PeerRow[]> {
 async function touchPeer(sql: Sql, room: string, peer: string, name: string) {
   await sql.query(
     `INSERT INTO webrtc_peers (room, peer_id, name, last_seen)
-     VALUES ($1, $2, $3, now())
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (room, peer_id)
-     DO UPDATE SET last_seen = now(), name = EXCLUDED.name`,
-    [room, peer, name],
+     DO UPDATE SET last_seen = excluded.last_seen, name = excluded.name`,
+    [room, peer, name, nowMs()],
   );
 }
 
 async function prune(sql: Sql) {
+  const peerCut = nowMs() - PEER_TTL_SECONDS * 1000;
+  const sigCut = nowMs() - SIGNAL_TTL_SECONDS * 1000;
   await Promise.all([
-    sql.query(`DELETE FROM webrtc_signals WHERE created_at < now() - make_interval(secs => $1)`, [
-      SIGNAL_TTL_SECONDS,
-    ]),
-    sql.query(`DELETE FROM webrtc_peers WHERE last_seen < now() - make_interval(secs => $1)`, [
-      PEER_TTL_SECONDS,
-    ]),
+    sql.query(`DELETE FROM webrtc_signals WHERE created_at < $1`, [sigCut]),
+    sql.query(`DELETE FROM webrtc_peers WHERE last_seen < $1`, [peerCut]),
   ]);
 }
 
@@ -118,73 +76,93 @@ async function handleGet(url: URL): Promise<Response> {
       room: url.searchParams.get("room"),
       peer: url.searchParams.get("peer"),
       name: url.searchParams.get("name") ?? "",
-      since: url.searchParams.get("since") ?? 0,
+      since: url.searchParams.get("since") ?? "0",
     });
-  if (!parsed.success) return json({ error: "invalid query" }, 400);
-  const { room, peer, name, since } = parsed.data;
+  if (!parsed.success) return json({ error: "bad_request" }, 400);
 
   const sql = await getSql();
-  await ensureSchema(sql);
-  if (since === 0 || Math.random() < 0.02) await prune(sql);
-  await touchPeer(sql, room, peer, name);
-  const rows = await sql.query<{
+  await prune(sql);
+
+  const peersBefore = await roster(sql, parsed.data.room);
+  const already = peersBefore.some((p) => p.id === parsed.data.peer);
+  if (!already && peersBefore.length >= 1) {
+    // world id rooms: block join when host locked the island
+    try {
+      const perms = await readGuestPermissionsForWorld(parsed.data.room);
+      if (perms.locked) return json({ error: "locked", peers: [], signals: [] }, 403);
+      if (perms.banned.includes(parsed.data.peer) || perms.banned.includes(parsed.data.name)) {
+        return json({ error: "banned", peers: [], signals: [] }, 403);
+      }
+    } catch {
+      /* room may not be a world id */
+    }
+  }
+
+  await touchPeer(sql, parsed.data.room, parsed.data.peer, parsed.data.name);
+  const peers = await roster(sql, parsed.data.room);
+  const signals = await sql.query<{
     id: number;
     from_peer: string;
-    kind: SignalRow["kind"];
-    payload: unknown;
+    kind: string;
+    payload: string;
   }>(
     `SELECT id, from_peer, kind, payload FROM webrtc_signals
      WHERE room = $1 AND to_peer = $2 AND id > $3
-     ORDER BY id LIMIT 200`,
-    [room, peer, since],
+     ORDER BY id ASC LIMIT 200`,
+    [parsed.data.room, parsed.data.peer, parsed.data.since],
   );
+
   const body: RtcPollResponse = {
-    peers: await roster(sql, room),
-    signals: rows.map((r) => ({
-      id: r.id,
-      from: r.from_peer,
-      kind: r.kind,
-      payload: r.payload,
-    })),
+    peers,
+    signals: signals.map(
+      (s): SignalRow => ({
+        id: s.id,
+        from: s.from_peer,
+        kind: s.kind as SignalRow["kind"],
+        payload: typeof s.payload === "string" ? JSON.parse(s.payload) : s.payload,
+      }),
+    ),
   };
   return json(body);
 }
 
-async function handlePost(request: Request): Promise<Response> {
+async function handlePost(req: Request): Promise<Response> {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
-    return json({ error: "invalid JSON" }, 400);
+    return json({ error: "bad_json" }, 400);
   }
   const parsed = postSchema.safeParse(body);
-  if (!parsed.success) return json({ error: "invalid request" }, 400);
-  const msg = parsed.data;
-  const sql = await getSql();
-  await ensureSchema(sql);
+  if (!parsed.success) return json({ error: "bad_request" }, 400);
 
-  if (msg.op === "signal") {
-    await sql.query(
-      `INSERT INTO webrtc_signals (room, to_peer, from_peer, kind, payload)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [msg.room, msg.to, msg.from, msg.kind, JSON.stringify(msg.payload)],
-    );
-  } else {
+  const sql = await getSql();
+  if (parsed.data.op === "leave") {
     await sql.query(`DELETE FROM webrtc_peers WHERE room = $1 AND peer_id = $2`, [
-      msg.room,
-      msg.peer,
+      parsed.data.room,
+      parsed.data.peer,
     ]);
+    return json({ ok: true });
   }
+
+  await sql.query(
+    `INSERT INTO webrtc_signals (room, to_peer, from_peer, kind, payload, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      parsed.data.room,
+      parsed.data.to,
+      parsed.data.from,
+      parsed.data.kind,
+      JSON.stringify(parsed.data.payload),
+      nowMs(),
+    ],
+  );
   return json({ ok: true });
 }
 
 export async function handleSignaling(request: Request): Promise<Response> {
-  try {
-    if (request.method === "GET") return await handleGet(new URL(request.url));
-    if (request.method === "POST") return await handlePost(request);
-    return json({ error: "method not allowed" }, 405);
-  } catch (error) {
-    console.error("[rtc] signaling error:", error);
-    return json({ error: "signaling failed" }, 500);
-  }
+  const url = new URL(request.url);
+  if (request.method === "GET") return handleGet(url);
+  if (request.method === "POST") return handlePost(request);
+  return json({ error: "method" }, 405);
 }

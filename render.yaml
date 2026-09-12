@@ -10,8 +10,8 @@ services:
       - key: NODE_VERSION
         value: "22"
       - key: NITRO_PRESET
-        value: render-com
+        value: node-server
       - key: HOST
         value: 0.0.0.0
-      - key: DATABASE_URL
-        sync: false
+      - key: SQLITE_PATH
+        value: data/local.db

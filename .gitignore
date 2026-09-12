@@ -16,3 +16,7 @@ artifacts
 *.log
 .pglite
 pglite.data
+data/
+*.db
+*.db-wal
+*.db-shm
