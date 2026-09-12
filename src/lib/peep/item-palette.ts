@@ -5,6 +5,7 @@ export const FORGE_PALETTE_MAX = 128;
 
 const BLOCK_SEEDS = [
   ...GOLD_HEXES,
+  "#ccaaee",
   "#68a85a",
   "#8a5a38",
   "#7a7670",
