@@ -7,13 +7,14 @@ import {
   IconFullscreen,
   IconFullscreenExit,
   IconGear,
+  IconPick,
   IconQr,
   IconReset,
   IconUsers,
 } from "@/components/peep/peep-icons";
 import { QrMark } from "@/components/peep/qr-mark";
 import { Button } from "@/components/ui/button";
-import { BLOCK_COLORS, BLOCK_NAMES, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
+import { BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
 import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
@@ -27,6 +28,7 @@ function swatchStyle(block: number): { background: string } {
   if (block === GRASS) return { background: "linear-gradient(#4fbe45 40%, #7a4e30 40%)" };
   if (block === WOOD) return { background: "linear-gradient(90deg, #8f5a30 0%, #c49254 46%, #8f5a30 52%, #c49254 100%)" };
   if (block === LEAVES) return { background: "linear-gradient(#5ed45a 55%, #2f8f34 55%)" };
+  if (block === GOLD) return { background: "linear-gradient(#f0d36a 40%, #c4922a 40%)" };
   return { background: swatch(block) };
 }
 
@@ -55,6 +57,8 @@ export function GameHud({
   phone,
   onSelect,
   onInvite,
+  onPickupHat,
+  onDismissChest,
   inviteUrl,
   onEmote,
   onReset,
@@ -66,6 +70,8 @@ export function GameHud({
   phone: boolean;
   onSelect: (i: number) => void;
   onInvite: () => void;
+  onPickupHat: () => void;
+  onDismissChest: () => void;
   inviteUrl: string;
   onEmote: (kind: EmoteKind) => void;
   onReset: () => Promise<boolean>;
@@ -119,22 +125,25 @@ export function GameHud({
             <span className="tabular-nums">{hud.peerCount}</span>
           </div>
 
-          <Chip
-            aria-label="Скопировать ссылку"
-            className="bg-primary text-primary-fg border-primary px-3"
-            onClick={() => {
-              onInvite();
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1600);
-            }}
-          >
-            <IconCopy className="size-3.5" />
-            <span className="hidden sm:inline">{copied ? "ok" : "invite"}</span>
-          </Chip>
-
-          <Chip aria-label="QR-код мира" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
-            <IconQr className="size-4" />
-          </Chip>
+          {hud.fridayUnlocked ? (
+            <>
+              <Chip
+                aria-label="Пятница"
+                className="bg-primary text-primary-fg border-primary px-3"
+                onClick={() => {
+                  onInvite();
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1600);
+                }}
+              >
+                <IconCopy className="size-3.5" />
+                <span className="hidden sm:inline">{copied ? "ok" : "пятница"}</span>
+              </Chip>
+              <Chip aria-label="QR Пятницы" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
+                <IconQr className="size-4" />
+              </Chip>
+            </>
+          ) : null}
 
           <Chip aria-label="Настройки" className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
             <IconGear className="size-4" />
@@ -184,6 +193,16 @@ export function GameHud({
             land ? "flex-row" : "flex-row max-md:flex-col [@media(pointer:coarse)]:flex-col",
           )}
         >
+          <div
+            aria-hidden
+            className={cn(
+              "relative hidden size-11 items-center justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-fg-on-ink/10 sm:size-12 md:flex",
+              "[@media(pointer:coarse)]:hidden",
+              land && "size-10 sm:size-10",
+            )}
+          >
+            <IconPick className="size-7" />
+          </div>
           {hud.palette.map((block, i) => (
             <button
               key={block}
@@ -192,7 +211,7 @@ export function GameHud({
               aria-label={BLOCK_NAMES[block]}
               aria-pressed={hud.selected === i}
               className={cn(
-                "flex size-11 items-center justify-center rounded-pixel border-2 transition-transform sm:size-12",
+                "relative flex size-11 items-center justify-center rounded-pixel border-2 transition-transform sm:size-12",
                 "[@media(pointer:coarse)]:size-10",
                 land && "size-10 sm:size-10",
                 hud.selected === i
@@ -201,23 +220,73 @@ export function GameHud({
               )}
             >
               <span
-                className="size-6 rounded-pixel border border-bg-deep/40 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)] sm:size-7"
+                className={cn(
+                  "size-6 rounded-pixel border border-bg-deep/40 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)] sm:size-7",
+                  (hud.counts[i] ?? 0) <= 0 && "opacity-30",
+                )}
                 style={swatchStyle(block)}
               />
+              <span className="absolute right-0.5 bottom-0.5 text-[10px] leading-none tabular-nums text-fg-on-ink">
+                {hud.counts[i] ?? 0}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
       <p className="absolute bottom-20 left-1/2 hidden -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80 md:block [@media(pointer:coarse)]:hidden">
-        WASD · мышь · пробел · зажать ЛКМ ломать · зажать ПКМ ставить · 1–6 · E/R/T
+        WASD · мышь · пробел · ломай чтобы брать · зажать ПКМ ставить · 1–7 · E/R/T
       </p>
+
+      {hud.hatPrompt && !hud.hatBusy ? (
+        <div className="pointer-events-auto absolute bottom-36 left-1/2 z-40 w-[min(280px,calc(100%-2rem))] -translate-x-1/2">
+          <Button
+            className="min-h-12 w-full rounded-pixel font-mono uppercase tracking-wide"
+            onClick={onPickupHat}
+          >
+            подобрать шляпу
+          </Button>
+        </div>
+      ) : null}
+
+      {hud.chestOffer ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
+          <div className="w-[min(380px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
+            <p className="font-mono text-lg uppercase tracking-wide">сундук</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
+              Внутри — золотой блок. Можно позвать Пятницу.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              {hud.isCreator ? (
+                <Button
+                  className="w-full rounded-pixel font-mono uppercase tracking-wide"
+                  onClick={() => {
+                    onInvite();
+                    onDismissChest();
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1600);
+                  }}
+                >
+                  позвать пятницу
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                className="w-full rounded-pixel border-2 border-border-ink font-mono uppercase"
+                onClick={onDismissChest}
+              >
+                закрыть
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {qrOpen ? (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
           <div className="w-[min(320px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-sm uppercase tracking-widest">qr · invite</p>
+              <p className="font-mono text-sm uppercase tracking-widest">пятница</p>
               <button
                 type="button"
                 aria-label="Закрыть"
@@ -239,7 +308,7 @@ export function GameHud({
                 window.setTimeout(() => setCopied(false), 1600);
               }}
             >
-              {copied ? "ссылка скопирована" : "копировать ссылку"}
+              {copied ? "ссылка скопирована" : "позвать пятницу"}
             </Button>
           </div>
         </div>
@@ -270,7 +339,7 @@ export function GameHud({
                 </p>
               )}
             </div>
-            {phone ? (
+            {phone && hud.fridayUnlocked ? (
               <button
                 type="button"
                 onClick={() => {
@@ -280,7 +349,7 @@ export function GameHud({
                 className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
               >
                 <IconQr className="size-4" />
-                qr · invite
+                пятница
               </button>
             ) : null}
             {hud.isCreator && hud.playing ? (

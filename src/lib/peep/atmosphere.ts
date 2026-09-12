@@ -257,7 +257,7 @@ export function createAtmosphere(seed: number): Atmosphere {
   group.add(sky);
 
   const water = new THREE.Mesh(
-    new THREE.PlaneGeometry(280, 280, 1, 1),
+    new THREE.PlaneGeometry(420, 420, 1, 1),
     createWaterMat(time, fogColor, fogNear, fogFar, createShoreMask(seed)),
   );
   water.rotation.x = -Math.PI / 2;
@@ -299,6 +299,8 @@ export function createAtmosphere(seed: number): Atmosphere {
 export function tickAtmosphere(atmo: Atmosphere, camera: THREE.Camera, dt: number) {
   atmo.time.value += dt;
   atmo.sky.position.copy(camera.position);
+  atmo.water.position.x = camera.position.x;
+  atmo.water.position.z = camera.position.z;
   atmo.sun.position.copy(camera.position).addScaledVector(SUN_DIR, 92);
   atmo.glow.position.copy(atmo.sun.position);
   atmo.glow.quaternion.copy(camera.quaternion);

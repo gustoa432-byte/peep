@@ -1,5 +1,4 @@
-import { REACH } from "./constants";
-import { inBounds } from "./world";
+import { REACH, WORLD_SY } from "./constants";
 import type { VoxelWorld } from "./world";
 
 export type VoxelHit = {
@@ -51,7 +50,7 @@ export function voxelRaycast(
   let t = 0;
 
   for (let i = 0; i < 128 && t <= maxDist; i++) {
-    if (inBounds(x, y, z) && world.isSolid(x, y, z)) {
+    if (y >= 0 && y < WORLD_SY && world.isSolid(x, y, z)) {
       return { x, y, z, nx, ny, nz };
     }
     if (tMaxX < tMaxY) {

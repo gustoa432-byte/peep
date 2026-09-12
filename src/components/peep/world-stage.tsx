@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { GameHud } from "@/components/peep/game-hud";
+import { WeaponDebug } from "@/components/peep/weapon-debug";
 import { LookSurface, PlaceHint, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE } from "@/lib/peep/constants";
@@ -34,6 +35,11 @@ const EMPTY_HUD: HudState = {
   placeCharge: 0,
   placeIntent: false,
   breakCharge: 0,
+  counts: [0, 0, 0, 0, 0, 0],
+  fridayUnlocked: false,
+  hatPrompt: false,
+  chestOffer: false,
+  hatBusy: false,
 };
 
 export function WorldStage({
@@ -150,6 +156,7 @@ export function WorldStage({
       data-orient={orient}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
+      <WeaponDebug />
       <GameHud
         hud={hud}
         orient={orient}
@@ -157,6 +164,8 @@ export function WorldStage({
         inviteUrl={inviteUrl}
         onSelect={(i) => gameRef.current?.setSelected(i)}
         onInvite={() => void invite()}
+        onPickupHat={() => gameRef.current?.pickupHat()}
+        onDismissChest={() => gameRef.current?.dismissChest()}
         onEmote={(kind) => gameRef.current?.playEmote(kind)}
         onReset={() => gameRef.current?.resetIsland() ?? Promise.resolve(false)}
         fullscreen={fullscreen}
@@ -217,7 +226,7 @@ export function WorldStage({
           <div className="w-[min(420px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
             <p className="font-mono text-xl uppercase tracking-wide">мир готов</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Нажмите, чтобы войти. Invite — ссылка или QR. Друг окажется в том же мире.
+              Нажмите, чтобы войти. Остров — только начало. Ломайте, чтобы строить.
             </p>
             <Button
               className="mt-5 w-full rounded-pixel font-mono uppercase tracking-wide"
@@ -227,7 +236,7 @@ export function WorldStage({
               войти в мир
             </Button>
             <p className="mt-3 text-center font-mono text-xs uppercase tracking-wide text-muted-on-ink md:hidden">
-              стик — ход · свайп — взгляд · двойной тап-держи — блок · зажми кирку — ломать
+              стик — ход · свайп — взгляд · ломай, чтобы ставить · кирка — ломать
             </p>
           </div>
         </div>

@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EditorRouteImport } from './routes/editor'
 import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as WorldWorldIdRouteImport } from './routes/world.$worldId'
@@ -17,6 +18,11 @@ import { Route as WorldWorldIdRouteImport } from './routes/world.$worldId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EditorRoute = EditorRouteImport.update({
+  id: '/editor',
+  path: '/editor',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HealthzRoute = HealthzRouteImport.update({
@@ -37,12 +43,14 @@ const WorldWorldIdRoute = WorldWorldIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/editor': typeof EditorRoute
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/editor': typeof EditorRoute
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
@@ -50,20 +58,22 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/editor': typeof EditorRoute
   '/healthz': typeof HealthzRoute
   '/api/rtc': typeof ApiRtcRoute
   '/world/$worldId': typeof WorldWorldIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/healthz' | '/api/rtc' | '/world/$worldId'
+  fullPaths: '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/healthz' | '/api/rtc' | '/world/$worldId'
-  id: '__root__' | '/' | '/healthz' | '/api/rtc' | '/world/$worldId'
+  to: '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
+  id: '__root__' | '/' | '/editor' | '/healthz' | '/api/rtc' | '/world/$worldId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  EditorRoute: typeof EditorRoute
   HealthzRoute: typeof HealthzRoute
   ApiRtcRoute: typeof ApiRtcRoute
   WorldWorldIdRoute: typeof WorldWorldIdRoute
@@ -76,6 +86,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/editor': {
+      id: '/editor'
+      path: '/editor'
+      fullPath: '/editor'
+      preLoaderRoute: typeof EditorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/healthz': {
@@ -104,6 +121,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  EditorRoute: EditorRoute,
   HealthzRoute: HealthzRoute,
   ApiRtcRoute: ApiRtcRoute,
   WorldWorldIdRoute: WorldWorldIdRoute,

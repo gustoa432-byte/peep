@@ -4,12 +4,15 @@ import {
   createAvatar,
   createHeartMesh,
   createLocalArm,
-  createPickaxe,
-  PICKAXE_REST,
-  paletteFor,
+  createTopHat,
+  disposePickaxe,
+  lookFor,
+  poseHatPickup,
   poseLocalArm,
+  remoteLook,
   setAvatarFace,
   swingAvatar,
+  wearHat,
 } from "./avatar";
 import { PeepAudio } from "./audio";
 import {
@@ -17,23 +20,24 @@ import {
   BLOCK_COLORS,
   BLOCK_PALETTE,
   BREAK_HOLD_S,
+  CHEST,
   CHUNK_S,
   EYE_HEIGHT,
   FOG_COLOR,
   FOG_FAR,
   FOG_NEAR,
+  GOLD,
   GRAVITY,
-  HOTBAR_SLOTS,
   JUMP_SPEED,
+  MESH_PER_FRAME,
   PLACE_DOUBLE_MS,
   PLACE_HOLD_S,
   PLAYER_HEIGHT,
   PLAYER_RADIUS,
+  VIEW_CHUNKS,
   WALK_SPEED,
   WATER_LEVEL,
-  WORLD_SX,
   WORLD_SY,
-  WORLD_SZ,
 } from "./constants";
 import { createAtmosphere, disposeAtmosphere, setUnderwater, tickAtmosphere, SUN_DIR, type Atmosphere } from "./atmosphere";
 import {
@@ -44,12 +48,17 @@ import {
   type BreakCracks,
   type PlaceGhost,
 } from "./build-fx";
-import { buildChunkGeometry, chunkCountX, chunkCountZ } from "./mesh";
+import { buildChunkGeometry } from "./mesh";
+import { addBlock, countOf, loadStory, saveStory, takeBlock, type Story } from "./progress";
 import { voxelRaycast, type VoxelHit } from "./raycast";
 import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./textures";
 import type { BlockEdit, EmoteKind, HudState, NetMsg, PresencePlayer } from "./types";
 import { EMOTE_DURATION } from "./types";
-import { VoxelWorld } from "./world";
+import { createHeldItem } from "./held-item";
+import { ITEM_DEBUG } from "./item-voxels";
+import { hatSpot, VoxelWorld } from "./world";
+
+export { buildItemFromJSON } from "./held-item";
 import { applyEdit, heartbeat, listEdits, listPresence, resetWorld } from "./world.functions";
 
 export type ControlsProbe = {
@@ -187,6 +196,13 @@ export class PeepGame {
   private readonly remotes = new Map<string, Remote>();
   private readonly particles: Particle[] = [];
   private readonly dirtyChunks = new Set<string>();
+  private readonly story: Story;
+  private readonly localBody: THREE.Group;
+  private readonly hatProp: THREE.Group;
+  private readonly hatAnchor: { x: number; y: number; z: number };
+  private cinematic: { t: number } | null = null;
+  private hatPrompt = false;
+  private chestOffer = false;
   private readonly keys = new Set<string>();
   private keyOverride: Set<string> | null = null;
   private disposed = false;
@@ -259,7 +275,9 @@ export class PeepGame {
     this.opts = opts;
     this.editCursor = opts.cursor;
     this.generation = opts.generation;
+    this.story = loadStory(opts.worldId, opts.playerId);
     this.world = new VoxelWorld(opts.seed, opts.edits);
+    if (this.story.chest) this.world.hideChest();
     const spawn = this.world.spawn();
     this.pos.set(spawn.x, spawn.y, spawn.z);
     this.yaw = Math.atan2(-SUN_DIR.x, -SUN_DIR.z);
@@ -352,7 +370,8 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.atmo = createAtmosphere(opts.seed);
     this.scene.add(this.atmo.group);
 
-    this.rebuildAllChunks();
+    this.streamChunks(false);
+    this.flushDirty(9);
 
     const hiGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.02, 1.02, 1.02));
     this.highlight = new THREE.LineSegments(
@@ -367,17 +386,26 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.breakFx = createBreakCracks();
     this.scene.add(this.breakFx.group);
 
-    this.pickaxe = createPickaxe();
-    this.localArm = createLocalArm();
+    const selfLook = lookFor(opts.isCreator);
+    this.pickaxe = createHeldItem();
+    this.localArm = createLocalArm(selfLook);
+    this.localBody = createAvatar(selfLook, { monocle: opts.isCreator, hat: this.story.hat });
+    this.localBody.visible = false;
+    this.scene.add(this.localBody);
+    this.hatAnchor = hatSpot(opts.seed);
+    this.hatProp = createTopHat();
+    this.hatProp.position.set(this.hatAnchor.x, this.hatAnchor.y + 0.08, this.hatAnchor.z);
+    this.hatProp.visible = opts.isCreator && !this.story.hat;
+    this.scene.add(this.hatProp);
     const grain = createFilmGrain();
     this.grainMesh = grain.mesh;
     this.grainTime = grain.time;
     this.overlayScene.add(this.pickaxe);
     this.overlayScene.add(this.localArm);
     this.overlayScene.add(this.grainMesh);
-    this.overlayScene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const vl = new THREE.DirectionalLight(0xfff4e5, 0.6);
-    vl.position.set(1, 2, 1);
+    this.overlayScene.add(new THREE.AmbientLight(0xfff4e8, 1.05));
+    const vl = new THREE.DirectionalLight(0xfff4e5, 0.85);
+    vl.position.set(0.4, 1.2, 1.4);
     this.overlayScene.add(vl);
 
     this.p2p = new P2PRoom({
@@ -449,7 +477,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   beginPlace() {
-    if (!this.playing) return;
+    if (!this.playing || this.cinematic) return;
     this.placeArmed = false;
     this.placing = true;
     this.placeT = 0;
@@ -479,7 +507,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   beginBreak() {
-    if (!this.playing) return;
+    if (!this.playing || this.cinematic) return;
     this.mining = true;
     this.breakT = 0;
     this.breakCharge = 0;
@@ -511,7 +539,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   jump() {
-    if (!this.playing) return;
+    if (!this.playing || this.cinematic) return;
     if (this.onGround) {
       this.vel.y = JUMP_SPEED;
       this.onGround = false;
@@ -520,7 +548,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   playEmote(kind: EmoteKind) {
-    if (!this.playing) return;
+    if (!this.playing || this.cinematic) return;
     this.emote = { kind, age: 0 };
     this.audio.emote(kind);
     this.p2p.send({ t: "emote", kind } satisfies NetMsg);
@@ -544,13 +572,41 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   /** Touch look pad: same signs as mouse — drag right looks right, drag up looks up. */
   lookBy(dx: number, dy: number) {
+    if (this.cinematic) return;
     this.lookDelta(dx, dy);
   }
 
   setSelected(i: number) {
-    if (i < 0 || i >= HOTBAR_SLOTS) return;
+    if (i < 0 || i >= this.palette().length) return;
     this.selected = i;
     this.hudDirty = true;
+  }
+
+  pickupHat() {
+    if (this.cinematic || !this.opts.isCreator || this.story.hat || !this.hatPrompt) return;
+    this.cinematic = { t: 0 };
+    this.hatPrompt = false;
+    this.playing = true;
+    this.localBody.visible = true;
+    this.localBody.position.copy(this.pos);
+    this.localBody.rotation.y = this.yaw;
+    this.pickaxe.visible = false;
+    this.hudDirty = true;
+  }
+
+  dismissChest() {
+    this.chestOffer = false;
+    this.hudDirty = true;
+  }
+
+  private persist() {
+    saveStory(this.opts.worldId, this.opts.playerId, this.story);
+  }
+
+  private palette(): readonly number[] {
+    return this.story.chest || countOf(this.story, GOLD) > 0
+      ? [...BLOCK_PALETTE, GOLD]
+      : BLOCK_PALETTE;
   }
 
   dispose() {
@@ -571,6 +627,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     (this.highlight.material as THREE.Material).dispose();
     disposePlaceGhost(this.placeGhost);
     disposeBreakCracks(this.breakFx);
+    disposePickaxe(this.pickaxe);
     this.renderer.dispose();
     this.resizeObs?.disconnect();
     if (window.__controlsTest) delete window.__controlsTest;
@@ -658,7 +715,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private onMouseMove(e: MouseEvent) {
-    if (!this.playing || !this.pointerLocked) return;
+    if (!this.playing || !this.pointerLocked || this.cinematic) return;
     this.yaw -= e.movementX * LOOK_SENS;
     this.pitch -= e.movementY * LOOK_SENS;
     this.pitch = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, this.pitch));
@@ -699,7 +756,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private onPointerMove(e: PointerEvent) {
-    if (!this.playing || this.pointerLocked || !this.dragging) return;
+    if (!this.playing || this.pointerLocked || !this.dragging || this.cinematic) return;
     const dx = e.clientX - this.lastPtrX;
     const dy = e.clientY - this.lastPtrY;
     this.lastPtrX = e.clientX;
@@ -735,7 +792,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   private onWheel(e: WheelEvent) {
     if (!this.playing) return;
     const dir = e.deltaY > 0 ? 1 : -1;
-    this.setSelected((this.selected + dir + HOTBAR_SLOTS) % HOTBAR_SLOTS);
+    this.setSelected((this.selected + dir + this.palette().length) % this.palette().length);
   }
 
   /**
@@ -783,10 +840,25 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.renderer.setSize(w, h, false);
   }
 
-  private rebuildAllChunks() {
-    for (let cz = 0; cz < chunkCountZ(); cz++) {
-      for (let cx = 0; cx < chunkCountX(); cx++) this.rebuildChunk(cx, cz);
+  private streamChunks(immediate = false) {
+    const pcx = Math.floor(this.pos.x / CHUNK_S);
+    const pcz = Math.floor(this.pos.z / CHUNK_S);
+    const keep = new Set<string>();
+    for (let dz = -VIEW_CHUNKS; dz <= VIEW_CHUNKS; dz++) {
+      for (let dx = -VIEW_CHUNKS; dx <= VIEW_CHUNKS; dx++) {
+        const key = `${pcx + dx},${pcz + dz}`;
+        keep.add(key);
+        if (!this.chunkMeshes.has(key)) this.dirtyChunks.add(key);
+      }
     }
+    for (const [key, mesh] of this.chunkMeshes) {
+      if (keep.has(key)) continue;
+      this.terrain.remove(mesh);
+      mesh.geometry.dispose();
+      this.chunkMeshes.delete(key);
+    }
+    this.world.evictFar(pcx, pcz, VIEW_CHUNKS + 2);
+    if (immediate) this.flushDirty(64);
   }
 
   private rebuildChunk(cx: number, cz: number) {
@@ -803,7 +875,6 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private markDirty(cx: number, cz: number) {
-    if (cx < 0 || cz < 0 || cx >= chunkCountX() || cz >= chunkCountZ()) return;
     this.dirtyChunks.add(`${cx},${cz}`);
   }
 
@@ -819,19 +890,34 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     if (lz === CHUNK_S - 1) this.markDirty(cx, cz + 1);
   }
 
-  /** At most one rebuild per dirty chunk per frame — mid-Android freeze otherwise. */
-  private flushDirty() {
+  /** A few rebuilds per frame — mid-Android freeze otherwise. */
+  private flushDirty(limit = MESH_PER_FRAME) {
     if (this.dirtyChunks.size === 0) return;
     const t0 = performance.now();
-    for (const key of this.dirtyChunks) {
+    const pcx = Math.floor(this.pos.x / CHUNK_S);
+    const pcz = Math.floor(this.pos.z / CHUNK_S);
+    const keys = [...this.dirtyChunks].sort((a, b) => {
+      const da = this.chunkDist(a, pcx, pcz);
+      const db = this.chunkDist(b, pcx, pcz);
+      return da - db;
+    });
+    let n = 0;
+    for (const key of keys) {
+      if (n >= limit) break;
+      this.dirtyChunks.delete(key);
       const comma = key.indexOf(",");
-      const cx = Number(key.slice(0, comma));
-      const cz = Number(key.slice(comma + 1));
-      this.rebuildChunk(cx, cz);
+      this.rebuildChunk(Number(key.slice(0, comma)), Number(key.slice(comma + 1)));
+      n += 1;
     }
-    this.dirtyChunks.clear();
     this.lastMeshMs = performance.now() - t0;
     if (this.lastMeshMs > this.maxMeshMs) this.maxMeshMs = this.lastMeshMs;
+  }
+
+  private chunkDist(key: string, pcx: number, pcz: number): number {
+    const comma = key.indexOf(",");
+    const cx = Number(key.slice(0, comma));
+    const cz = Number(key.slice(comma + 1));
+    return Math.abs(cx - pcx) + Math.abs(cz - pcz);
   }
 
   private frame() {
@@ -848,6 +934,9 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       this.acc -= step;
     }
     this.anim += dt;
+    this.streamChunks();
+    this.updateHatPrompt();
+    this.updateCinematic(dt);
     this.updateCamera(dt);
     tickAtmosphere(this.atmo, this.camera, dt);
     setUnderwater(
@@ -878,7 +967,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private fixed(dt: number) {
-    if (!this.playing) {
+    if (!this.playing || this.cinematic) {
       this.vel.x *= 0.7;
       this.vel.z *= 0.7;
       this.vel.y -= GRAVITY * dt;
@@ -1001,8 +1090,6 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
         }
       }
     }
-    this.pos.x = Math.max(r, Math.min(WORLD_SX - r, this.pos.x));
-    this.pos.z = Math.max(r, Math.min(WORLD_SZ - r, this.pos.z));
     this.pos.y = Math.max(1, Math.min(WORLD_SY + 8, this.pos.y));
   }
 
@@ -1022,16 +1109,76 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       }
     }
     const bobY = Math.sin(this.bob) * 0.04;
-    this.camera.position.set(this.pos.x, this.pos.y + EYE_HEIGHT + bobY, this.pos.z);
-    this.camera.rotation.set(this.pitch + this.camPitchOff, this.yaw + this.camYawOff, this.camRoll);
+    const eye = this.pos.y + EYE_HEIGHT + bobY;
+    if (this.cinematic) {
+      const u = Math.min(1, this.cinematic.t / 4.2);
+      const pull = u < 0.18 ? u / 0.18 : u > 0.82 ? 1 - (u - 0.82) / 0.18 : 1;
+      const fx = -Math.sin(this.yaw);
+      const fz = -Math.cos(this.yaw);
+      const dist = 0.12 + pull * 3.15;
+      const height = eye + pull * 0.55;
+      this.camera.position.set(this.pos.x - fx * dist, height, this.pos.z - fz * dist);
+      this.camera.lookAt(this.pos.x, this.pos.y + 1.25, this.pos.z);
+    } else {
+      this.camera.position.set(this.pos.x, eye, this.pos.z);
+      this.camera.rotation.set(this.pitch + this.camPitchOff, this.yaw + this.camYawOff, this.camRoll);
+    }
     this.camera.getWorldDirection(this.tmpFwd);
     this.lookX = this.tmpFwd.x;
     this.lookY = this.tmpFwd.y;
     this.lookZ = this.tmpFwd.z;
   }
 
+  private updateHatPrompt() {
+    if (!this.opts.isCreator || this.story.hat || this.cinematic || !this.playing) {
+      if (this.hatPrompt) {
+        this.hatPrompt = false;
+        this.hudDirty = true;
+      }
+      return;
+    }
+    const near =
+      Math.hypot(this.pos.x - this.hatAnchor.x, this.pos.z - this.hatAnchor.z) < 1.7 &&
+      Math.abs(this.pos.y - this.hatAnchor.y) < 2.2;
+    if (near !== this.hatPrompt) {
+      this.hatPrompt = near;
+      this.hudDirty = true;
+    }
+    if (this.hatProp.visible) {
+      this.hatProp.rotation.y = this.anim * 0.6;
+      this.hatProp.position.y = this.hatAnchor.y + 0.08 + Math.sin(this.anim * 2.2) * 0.04;
+    }
+  }
+
+  private updateCinematic(dt: number) {
+    if (!this.cinematic) return;
+    this.cinematic.t += dt;
+    const u = Math.min(1, this.cinematic.t / 4.2);
+    this.localBody.position.copy(this.pos);
+    this.localBody.rotation.y = this.yaw;
+    poseHatPickup(this.localBody, u);
+    if (u >= 0.48 && this.hatProp.visible) {
+      this.hatProp.visible = false;
+      wearHat(this.localBody, true);
+    }
+    if (u >= 0.72 && u < 0.88) setAvatarFace(this.localBody, "wink");
+    else if (u >= 0.88) setAvatarFace(this.localBody, "idle");
+    this.pickaxe.visible = false;
+    if (this.cinematic.t >= 4.2) {
+      this.cinematic = null;
+      this.story.hat = true;
+      this.persist();
+      wearHat(this.localBody, true);
+      this.localBody.visible = false;
+      setAvatarFace(this.localBody, "idle");
+      this.pickaxe.visible = true;
+      this.p2p.send({ t: "look", hat: true } satisfies NetMsg);
+      this.hudDirty = true;
+    }
+  }
+
   private updateHighlight() {
-    const hit = this.playing
+    const hit = this.playing && !this.cinematic
       ? voxelRaycast(
           this.world,
           this.camera.position.x,
@@ -1064,6 +1211,11 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private updateBuild(dt: number) {
+    if (this.cinematic) {
+      this.placeGhost.mesh.visible = false;
+      this.breakFx.group.visible = false;
+      return;
+    }
     this.updatePlaceHold(dt);
     this.updateBreakHold(dt);
   }
@@ -1181,22 +1333,26 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   private updatePickaxe(dt: number) {
     if (this.swing > 0) this.swing = Math.max(0, this.swing - dt * 8);
     const waving = this.emote?.kind === "wave";
-    this.pickaxe.visible = !waving;
+    this.pickaxe.visible = !waving && !this.cinematic;
     if (waving) return;
     const s = Math.sin(this.swing * Math.PI * 0.5);
     const bob = Math.sin(this.bob) * 0.018;
-    this.pickaxe.rotation.x = PICKAXE_REST.rx - s * 0.9;
-    this.pickaxe.rotation.y = PICKAXE_REST.ry + s * 0.1;
-    this.pickaxe.rotation.z = PICKAXE_REST.rz - s * 0.42;
+    const rest = ITEM_DEBUG;
+    this.pickaxe.scale.setScalar(rest.scale);
+    this.pickaxe.rotation.x = rest.rx - s * 0.82;
+    this.pickaxe.rotation.y = rest.ry + s * 0.08;
+    this.pickaxe.rotation.z = rest.rz - s * 0.36;
     this.pickaxe.position.set(
-      PICKAXE_REST.x - s * 0.05,
-      PICKAXE_REST.y - s * 0.1 + bob,
-      PICKAXE_REST.z - s * 0.04,
+      rest.x - s * 0.06,
+      rest.y - s * 0.12 + bob,
+      rest.z - s * 0.03,
     );
   }
 
   private currentBlock(): number {
-    return BLOCK_PALETTE[this.selected] ?? AIR;
+    const block = this.palette()[this.selected] ?? AIR;
+    if (countOf(this.story, block) <= 0) return AIR;
+    return block;
   }
 
   private overlapsPlayer(x: number, y: number, z: number): boolean {
@@ -1233,6 +1389,10 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
             this.world.set(x, y, z, prev);
             this.rebuildAround(x, z);
             this.p2p.send({ t: "block", x, y, z, block: prev } satisfies NetMsg);
+            if (block === AIR && prev !== AIR && prev !== CHEST) takeBlock(this.story, prev);
+            if (block !== AIR) addBlock(this.story, block);
+            this.persist();
+            this.hudDirty = true;
             return;
           }
           this.failStreak = 0;
@@ -1250,10 +1410,28 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     const { x, y, z } = this.hit;
     const prev = this.world.get(x, y, z);
     if (prev === AIR) return;
+    if (prev === CHEST) {
+      this.applyLocal(x, y, z, AIR, true);
+      this.audio.break(prev);
+      this.audio.pickup();
+      if (!this.story.chest) {
+        this.story.chest = true;
+        this.story.friday = true;
+        addBlock(this.story, GOLD, 1);
+        this.persist();
+        this.chestOffer = true;
+      }
+      this.swing = 1;
+      this.hudDirty = true;
+      return;
+    }
     this.applyLocal(x, y, z, AIR, true);
+    addBlock(this.story, prev, 1);
+    this.persist();
     this.audio.break(prev);
     this.audio.pickup();
     this.swing = 1;
+    this.hudDirty = true;
   }
 
   private placeBlock() {
@@ -1265,9 +1443,12 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     const z = this.hit.z + this.hit.nz;
     if (this.world.get(x, y, z) !== AIR) return false;
     if (this.overlapsPlayer(x, y, z)) return false;
+    if (!takeBlock(this.story, block)) return false;
+    this.persist();
     this.applyLocal(x, y, z, block, true);
     this.audio.place(block);
     this.swing = 0.6;
+    this.hudDirty = true;
     return true;
   }
 
@@ -1333,6 +1514,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
         if (p.connectionState === "connected") this.p2p.send({ t: "hello" } satisfies NetMsg, p.id);
       }
     }
+    if (this.story.hat) this.p2p.send({ t: "look", hat: true } satisfies NetMsg);
   }
 
   private ensureRemote(id: string, fromP2p: boolean): Remote {
@@ -1341,8 +1523,8 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       r.fromP2p = r.fromP2p || fromP2p;
       return r;
     }
-    const pal = paletteFor(id, this.opts.playerId);
-    const group = createAvatar(pal);
+    const pal = remoteLook(this.opts.isCreator);
+    const group = createAvatar(pal, { monocle: !this.opts.isCreator, hat: false });
     const s = this.world.spawn();
     group.position.set(s.x, s.y, s.z);
     this.scene.add(group);
@@ -1389,6 +1571,9 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       r.last = performance.now();
     } else if (msg.t === "block" && channel === "reliable") {
       this.applyLocal(msg.x, msg.y, msg.z, msg.block, false);
+    } else if (msg.t === "look" && channel === "reliable") {
+      const r = this.ensureRemote(from, true);
+      wearHat(r.group, msg.hat);
     } else if (msg.t === "emote" && channel === "reliable") {
       const kind = msg.kind;
       if (kind !== "wave" && kind !== "hearts" && kind !== "laugh") return;
@@ -1584,8 +1769,9 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private emitHud() {
     this.hudDirty = false;
+    const palette = this.palette();
     this.opts.onHud({
-      palette: BLOCK_PALETTE,
+      palette,
       selected: this.selected,
       peerCount: this.peerCount,
       peerConnected: this.peerConnected || this.remotes.size > 0,
@@ -1595,6 +1781,11 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       placeCharge: this.placeCharge,
       placeIntent: this.placeArmed && !this.placing,
       breakCharge: this.breakCharge,
+      counts: palette.map((b) => countOf(this.story, b)),
+      fridayUnlocked: this.story.friday && this.opts.isCreator,
+      hatPrompt: this.hatPrompt,
+      chestOffer: this.chestOffer,
+      hatBusy: Boolean(this.cinematic),
     });
   }
 
@@ -1615,7 +1806,15 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       if (e.cursor && e.cursor > this.editCursor) this.editCursor = e.cursor;
     }
     this.world.resetTo(edits);
-    this.rebuildAllChunks();
+    if (this.story.chest) this.world.hideChest();
+    for (const mesh of this.chunkMeshes.values()) {
+      this.terrain.remove(mesh);
+      mesh.geometry.dispose();
+    }
+    this.chunkMeshes.clear();
+    this.dirtyChunks.clear();
+    this.streamChunks(false);
+    this.flushDirty(9);
     const spawn = this.world.spawn();
     this.pos.set(spawn.x, spawn.y, spawn.z);
     this.vel.set(0, 0, 0);
