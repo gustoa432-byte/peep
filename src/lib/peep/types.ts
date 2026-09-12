@@ -153,7 +153,7 @@ export type JoinOk = {
   cursor: number;
   generation: number;
   isCreator: boolean;
-  guestPermissions: {
+  guestPermissions?: {
     locked: boolean;
     buildAllowed: boolean;
     banned: string[];

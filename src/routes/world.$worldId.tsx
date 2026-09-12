@@ -126,8 +126,8 @@ function WorldPage() {
         isCreator={result.isCreator}
         playerId={playerId}
         inventoryOverride={inventoryOverride ?? remoteInv}
-        guestBuildAllowed={result.guestPermissions.buildAllowed}
-        islandLocked={result.guestPermissions.locked}
+        guestBuildAllowed={result.guestPermissions?.buildAllowed ?? false}
+        islandLocked={result.guestPermissions?.locked ?? false}
       />
     </Suspense>
   );

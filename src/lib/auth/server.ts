@@ -35,7 +35,8 @@ import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { randomBytes } from "node:crypto";
 import { SqliteDialect } from "kysely";
-import { ensureDbReady, getSqliteDb } from "../db";
+import { ensureDbReady } from "../db";
+import { getSqliteDbImpl } from "../db-sqlite.server";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { AUTH_PROVIDERS } from "./providers";
@@ -130,7 +131,7 @@ const authUserInfoUrl = `${issuerBase}/api/auth/oauth2/userinfo`;
 // Better Auth on the same local SQLite file as game data.
 const database = {
   dialect: new SqliteDialect({
-    database: getSqliteDb(),
+    database: getSqliteDbImpl(),
   }),
   type: "sqlite" as const,
 };
