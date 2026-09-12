@@ -2,19 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ItemEditor } from "@/lib/peep/item-editor";
-import { ITEM_KINDS, ITEM_LABELS, type ItemKind } from "@/lib/peep/item-voxels";
+import { ITEM_KINDS, ITEM_LABELS, parseItemVoxels, type ItemKind } from "@/lib/peep/item-voxels";
 import { cn } from "@/lib/utils";
 
 function swatch(kind: ItemKind): string {
   const map: Record<ItemKind, string> = {
-    wood: "var(--color-block-wood)",
-    metal: "var(--color-block-stone)",
-    accent: "var(--color-primary)",
-    dirt: "var(--color-block-dirt)",
-    stone: "var(--color-block-stone)",
-    grass: "var(--color-block-grass)",
-    sand: "var(--color-block-sand)",
-    gold: "var(--color-block-gold)",
+    wood: "var(--color-forge-wood)",
+    metal: "var(--color-forge-metal)",
+    accent: "var(--color-forge-terra)",
+    gold: "var(--color-forge-gold)",
+    cloth: "var(--color-forge-cloth)",
   };
   return map[kind];
 }
@@ -22,9 +19,11 @@ function swatch(kind: ItemKind): string {
 export function ItemForge() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const editorRef = useRef<ItemEditor | null>(null);
+  const gripRef = useRef<HTMLDivElement>(null);
   const [kind, setKind] = useState<ItemKind>("wood");
   const [erase, setErase] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [count, setCount] = useState(0);
 
   useEffect(() => {
@@ -32,8 +31,24 @@ export function ItemForge() {
     if (!canvas) return;
     const editor = new ItemEditor(canvas);
     editor.onChange = () => setCount(editor.voxelsList().length);
+    setCount(editor.voxelsList().length);
     editorRef.current = editor;
+
+    let frame = 0;
+    const follow = () => {
+      const tag = gripRef.current;
+      if (tag) {
+        const p = editor.projectGrip();
+        tag.style.left = `${p.x}px`;
+        tag.style.top = `${p.y}px`;
+        tag.style.opacity = p.visible ? "1" : "0";
+      }
+      frame = requestAnimationFrame(follow);
+    };
+    frame = requestAnimationFrame(follow);
+
     return () => {
+      cancelAnimationFrame(frame);
       editor.dispose();
       editorRef.current = null;
     };
@@ -76,9 +91,46 @@ export function ItemForge() {
     }
   };
 
+  const pasteJson = async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    let seed = "";
+    try {
+      if (navigator.clipboard?.readText) seed = (await navigator.clipboard.readText()).trim();
+    } catch {
+      seed = "";
+    }
+    const raw = window.prompt("Вставьте JSON предмета", seed.startsWith("[") ? seed : "");
+    if (raw == null) return;
+    const text = raw.trim();
+    if (!text) return;
+    try {
+      const voxels = parseItemVoxels(text);
+      editor.load(voxels);
+      setLoaded(true);
+      window.setTimeout(() => setLoaded(false), 1600);
+    } catch {
+      window.alert("Не получилось прочитать JSON");
+    }
+  };
+
+  const clearAll = () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    if (!window.confirm("Точно удалить всё?")) return;
+    editor.clear();
+  };
+
   return (
     <div className="fixed inset-0 bg-bg-deep font-mono text-fg-on-ink">
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
+      <div
+        ref={gripRef}
+        className="peep-grip-tag pointer-events-none absolute z-10"
+        style={{ left: "50%", top: "50%", opacity: 0 }}
+      >
+        Точка хвата
+      </div>
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-4">
         <div className="pointer-events-auto">
@@ -87,12 +139,15 @@ export function ItemForge() {
             лкм — поставить · пкм — стереть · крути сцену мышью
           </p>
         </div>
-        <div className="pointer-events-auto flex flex-col items-end gap-2 sm:flex-row">
+        <div className="pointer-events-auto flex max-w-[min(100%,22rem)] flex-col items-end gap-2 sm:max-w-none sm:flex-row sm:flex-wrap">
           <Button asChild variant="ink" className="min-h-11 border-2 border-fg-on-ink/20">
             <Link to="/">назад в меню</Link>
           </Button>
           <Button variant="default" className="min-h-11" onClick={() => void copyJson()}>
             {copied ? "скопировано" : "Copy to JSON"}
+          </Button>
+          <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => void pasteJson()}>
+            {loaded ? "загружено" : "Загрузить JSON"}
           </Button>
         </div>
       </header>
@@ -119,6 +174,13 @@ export function ItemForge() {
               )}
             >
               стереть
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="min-h-11 rounded-pixel border-2 border-danger/70 px-3 font-mono text-sm tracking-wide text-fg-on-ink"
+            >
+              Очистить всё
             </button>
             <span className="ml-auto font-mono text-xs uppercase tracking-widest text-muted-on-ink">
               {count} кл.

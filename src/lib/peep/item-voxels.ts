@@ -6,36 +6,51 @@ export const FORGE_STORAGE_KEY = "peep.forge.item";
 /** One editor cell is this many overlay units in the hand. */
 export const ITEM_UNIT = 0.1;
 
-export const ITEM_KINDS = ["wood", "metal", "accent", "dirt", "stone", "grass", "sand", "gold"] as const;
+export const ITEM_KINDS = ["wood", "metal", "accent", "gold", "cloth"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
 export type ItemVoxel = {
   x: number;
   y: number;
   z: number;
-  kind: ItemKind;
+  color: string;
+};
+
+export const ITEM_HEX: Record<ItemKind, string> = {
+  wood: "#8b5a2b",
+  metal: "#808080",
+  accent: "#b85c38",
+  gold: "#ffd700",
+  cloth: "#1a1612",
 };
 
 export const ITEM_COLORS: Record<ItemKind, number> = {
-  wood: 0xb07a45,
-  metal: 0x8a8680,
+  wood: 0x8b5a2b,
+  metal: 0x808080,
   accent: 0xb85c38,
-  dirt: 0x8a5a38,
-  stone: 0x7a7670,
-  grass: 0x68a85a,
-  sand: 0xe0c48a,
-  gold: 0xe2b84a,
+  gold: 0xffd700,
+  cloth: 0x1a1612,
 };
 
 export const ITEM_LABELS: Record<ItemKind, string> = {
   wood: "дерево",
   metal: "металл",
   accent: "терракота",
-  dirt: "земля",
-  stone: "камень",
-  grass: "трава",
-  sand: "песок",
   gold: "золото",
+  cloth: "ткань",
+};
+
+/** Old кузница `kind` values → flat palette hex. */
+const KIND_HEX: Record<string, string> = {
+  wood: ITEM_HEX.wood,
+  metal: ITEM_HEX.metal,
+  accent: ITEM_HEX.accent,
+  gold: ITEM_HEX.gold,
+  cloth: ITEM_HEX.cloth,
+  dirt: ITEM_HEX.wood,
+  stone: ITEM_HEX.metal,
+  grass: ITEM_HEX.accent,
+  sand: ITEM_HEX.gold,
 };
 
 export type ItemDebugTransform = {
@@ -59,18 +74,38 @@ export const ITEM_DEBUG: ItemDebugTransform = {
   scale: 0.88,
 };
 
-function isKind(value: unknown): value is ItemKind {
-  return typeof value === "string" && (ITEM_KINDS as readonly string[]).includes(value);
+export function kindFromHex(color: string): ItemKind {
+  const hex = normalizeHex(color);
+  if (!hex) return "wood";
+  for (const kind of ITEM_KINDS) {
+    if (ITEM_HEX[kind] === hex) return kind;
+  }
+  return "wood";
 }
 
-function kindFromColor(value: unknown): ItemKind | null {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const hex = typeof value === "number" ? value : Number.parseInt(value.replace("#", ""), 16);
-  if (!Number.isFinite(hex)) return null;
-  for (const kind of ITEM_KINDS) {
-    if (ITEM_COLORS[kind] === hex) return kind;
+export function hexToInt(color: string): number {
+  const hex = normalizeHex(color) ?? ITEM_HEX.wood;
+  return Number.parseInt(hex.slice(1), 16);
+}
+
+export function normalizeHex(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `#${(value & 0xffffff).toString(16).padStart(6, "0")}`;
+  }
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  const six = raw.match(/^#?([0-9a-fA-F]{6})$/);
+  if (six) return `#${six[1]!.toLowerCase()}`;
+  const three = raw.match(/^#?([0-9a-fA-F]{3})$/);
+  if (three) {
+    const [r, g, b] = three[1]!;
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
   }
   return null;
+}
+
+function colorFromRow(rec: Record<string, unknown>): string {
+  return normalizeHex(rec.color) ?? KIND_HEX[String(rec.kind ?? "")] ?? ITEM_HEX.wood;
 }
 
 export function parseItemVoxels(jsonString: string): ItemVoxel[] {
@@ -85,14 +120,13 @@ export function parseItemVoxels(jsonString: string): ItemVoxel[] {
     const y = Number(rec.y);
     const z = Number(rec.z);
     if (![x, y, z].every(Number.isFinite)) continue;
-    const kind = isKind(rec.kind) ? rec.kind : kindFromColor(rec.color) ?? "wood";
     const vx = Math.round(x);
     const vy = Math.round(y);
     const vz = Math.round(z);
     const key = `${vx},${vy},${vz}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ x: vx, y: vy, z: vz, kind });
+    out.push({ x: vx, y: vy, z: vz, color: colorFromRow(rec) });
   }
   return out;
 }
@@ -103,8 +137,7 @@ export function serializeItemVoxels(voxels: ItemVoxel[]): string {
       x: v.x,
       y: v.y,
       z: v.z,
-      kind: v.kind,
-      color: `#${ITEM_COLORS[v.kind].toString(16).padStart(6, "0")}`,
+      color: normalizeHex(v.color) ?? ITEM_HEX.wood,
     })),
   );
 }
@@ -128,7 +161,7 @@ export function writeStoredItem(voxels: ItemVoxel[]) {
 
 /**
  * Merge a кузница export into one overlay group (InstancedMesh).
- * Coordinates are editor cells around (0,0,0).
+ * Coordinates are editor cells around (0,0,0). Flat hex, no terrain atlas.
  */
 export function buildItemFromJSON(jsonString: string): THREE.Group {
   const voxels = parseItemVoxels(jsonString);
@@ -136,17 +169,18 @@ export function buildItemFromJSON(jsonString: string): THREE.Group {
   g.name = "forgeItem";
   if (!voxels.length) return g;
 
-  const byKind = new Map<ItemKind, ItemVoxel[]>();
+  const byColor = new Map<string, ItemVoxel[]>();
   for (const v of voxels) {
-    const list = byKind.get(v.kind) ?? [];
+    const color = normalizeHex(v.color) ?? ITEM_HEX.wood;
+    const list = byColor.get(color) ?? [];
     list.push(v);
-    byKind.set(v.kind, list);
+    byColor.set(color, list);
   }
 
   const dummy = new THREE.Object3D();
-  for (const [kind, list] of byKind) {
+  for (const [color, list] of byColor) {
     const geo = new THREE.BoxGeometry(ITEM_UNIT, ITEM_UNIT, ITEM_UNIT);
-    const mat = new THREE.MeshLambertMaterial({ color: ITEM_COLORS[kind] });
+    const mat = new THREE.MeshBasicMaterial({ color: hexToInt(color) });
     const inst = new THREE.InstancedMesh(geo, mat, list.length);
     inst.frustumCulled = false;
     list.forEach((v, i) => {
