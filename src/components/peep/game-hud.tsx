@@ -14,7 +14,7 @@ import {
 } from "@/components/peep/peep-icons";
 import { QrMark } from "@/components/peep/qr-mark";
 import { Button } from "@/components/ui/button";
-import { BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
+import { AIR, BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, WOOD } from "@/lib/peep/constants";
 import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
@@ -24,7 +24,8 @@ function swatch(block: number): string {
   return `#${c.toString(16).padStart(6, "0")}`;
 }
 
-function swatchStyle(block: number): { background: string } {
+function swatchStyle(block: number): { background: string } | undefined {
+  if (block === AIR) return undefined;
   if (block === GRASS) return { background: "linear-gradient(#4fbe45 40%, #7a4e30 40%)" };
   if (block === WOOD) return { background: "linear-gradient(90deg, #8f5a30 0%, #c49254 46%, #8f5a30 52%, #c49254 100%)" };
   if (block === LEAVES) return { background: "linear-gradient(#5ed45a 55%, #2f8f34 55%)" };
@@ -233,7 +234,7 @@ export function GameHud({
               key={block}
               type="button"
               onClick={() => onSelect(i)}
-              aria-label={BLOCK_NAMES[block]}
+              aria-label={BLOCK_NAMES[block] ?? `block ${block}`}
               aria-pressed={hud.selected === i}
               className={cn(
                 "relative flex size-11 items-center justify-center rounded-pixel border-2 transition-transform sm:size-12",
@@ -247,12 +248,13 @@ export function GameHud({
               <span
                 className={cn(
                   "size-6 rounded-pixel border border-bg-deep/40 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)] sm:size-7",
-                  (hud.counts[i] ?? 0) <= 0 && "opacity-30",
+                  block === AIR && "peep-air-swatch shadow-none",
+                  block !== AIR && (hud.counts[i] ?? 0) <= 0 && "opacity-30",
                 )}
                 style={swatchStyle(block)}
               />
               <span className="absolute right-0.5 bottom-0.5 text-[10px] leading-none tabular-nums text-fg-on-ink">
-                {hud.counts[i] ?? 0}
+                {block === AIR ? "∞" : (hud.counts[i] ?? 0)}
               </span>
             </button>
           ))}

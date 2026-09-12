@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 
 const EMPTY_HUD: HudState = {
   palette: BLOCK_PALETTE,
-  selected: 0,
+  selected: 1,
   peerCount: 1,
   peerConnected: false,
   playing: false,

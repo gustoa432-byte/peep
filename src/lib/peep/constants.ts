@@ -22,10 +22,10 @@ export const GOLD = 8;
 
 export const BLOCK_COUNT = 8;
 
-export const BLOCK_NAMES = ["Air", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
+export const BLOCK_NAMES = ["Пусто", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
 
 /** Buildable types. Counts start at zero — you place what you dig. */
-export const BLOCK_PALETTE = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
+export const BLOCK_PALETTE = [AIR, GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
 
 export const HOTBAR_SLOTS = BLOCK_PALETTE.length + 1;
 
