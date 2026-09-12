@@ -8,7 +8,10 @@ export type TelegramWebAppUser = {
 
 export type TelegramWebApp = {
   initData?: string;
-  initDataUnsafe?: { user?: TelegramWebAppUser };
+  initDataUnsafe?: {
+    user?: TelegramWebAppUser;
+    start_param?: string;
+  };
   ready: () => void;
   expand: () => void;
   isExpanded?: boolean;
@@ -55,4 +58,44 @@ export function initTelegramWebApp(): number | null {
     /* older clients */
   }
   return getTelegramUserId();
+}
+
+/** Raw `start_param` / startapp payload from Telegram. */
+export function getTelegramStartParam(): string | null {
+  if (typeof window === "undefined") return null;
+  const fromInit = getTelegramWebApp()?.initDataUnsafe?.start_param?.trim();
+  if (fromInit) return fromInit;
+  try {
+    const q = new URLSearchParams(window.location.search);
+    const fromUrl =
+      q.get("tgWebAppStartParam")?.trim() ||
+      q.get("startapp")?.trim() ||
+      q.get("startApp")?.trim();
+    if (fromUrl) return fromUrl;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/**
+ * `invite_{hostTelegramNumericId}` → host player id `tg_{id}`.
+ */
+export function parseInviteHostId(startParam: string | null | undefined): string | null {
+  if (!startParam) return null;
+  const m = startParam.trim().match(/^invite_(\d{1,16})$/i);
+  return m ? telegramPlayerId(Number(m[1])) : null;
+}
+
+/** startapp value the host shares so Friday can join. */
+export function hostInviteStartApp(): string | null {
+  const id = getTelegramUserId();
+  return id != null ? `invite_${id}` : null;
+}
+
+export function fridayInviteLink(botUsername: string): string | null {
+  const start = hostInviteStartApp();
+  if (!start || !botUsername) return null;
+  const bot = botUsername.replace(/^@/, "");
+  return `https://t.me/${bot}?startapp=${encodeURIComponent(start)}`;
 }

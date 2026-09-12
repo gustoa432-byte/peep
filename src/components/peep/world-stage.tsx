@@ -45,6 +45,9 @@ const EMPTY_HUD: HudState = {
   hatPrompt: false,
   chestOffer: false,
   hatBusy: false,
+  guestBuildAllowed: false,
+  islandLocked: false,
+  fridayOnline: false,
 };
 
 export function WorldStage({
@@ -56,6 +59,8 @@ export function WorldStage({
   isCreator,
   playerId,
   inventoryOverride = null,
+  guestBuildAllowed = false,
+  islandLocked = false,
 }: {
   worldId: string;
   seed: number;
@@ -65,6 +70,8 @@ export function WorldStage({
   isCreator: boolean;
   playerId: string;
   inventoryOverride?: Story | null;
+  guestBuildAllowed?: boolean;
+  islandLocked?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -72,6 +79,7 @@ export function WorldStage({
   const lazyRef = useRef<ReturnType<typeof startLazySave> | null>(null);
   const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, worldId, isCreator });
   const [lost, setLost] = useState(false);
+  const [kicked, setKicked] = useState(false);
   const [placed, setPlaced] = useState(placedBlockCount);
   const [storedOrient] = useState(readOrient);
   const [skipRotate, setSkipRotate] = useState(false);
@@ -105,15 +113,19 @@ export function WorldStage({
       isCreator,
       playerId,
       inventoryOverride,
+      guestBuildAllowed,
+      islandLocked,
       onHud: setHud,
       onLost: () => setLost(true),
+      onKicked: () => setKicked(true),
       onPlaced: () => setPlaced(recordPlacedBlock()),
       onWorldDirty: () => lazyRef.current?.markDirty(),
     });
     gameRef.current = game;
 
+    // Host-only lazy save (Telegram identity).
     const tg = getTelegramSaveId();
-    if (tg) {
+    if (tg && isCreator) {
       lazyRef.current = startLazySave(() => game.serializeWorld());
       void lazyRef.current.flush();
     }
@@ -126,9 +138,25 @@ export function WorldStage({
       markSessionDone();
       void leaveWorld({ data: { worldId, playerId } });
     };
-  }, [worldId, seed, edits, cursor, generation, isCreator, playerId, inventoryOverride]);
+  }, [
+    worldId,
+    seed,
+    edits,
+    cursor,
+    generation,
+    isCreator,
+    playerId,
+    inventoryOverride,
+    guestBuildAllowed,
+    islandLocked,
+  ]);
 
   const onSaveWorld = async () => {
+    if (!isCreator) {
+      setSaveHint("сохранять может только хозяин");
+      window.setTimeout(() => setSaveHint(null), 2800);
+      return;
+    }
     const lazy = lazyRef.current;
     if (!lazy) {
       setSaveHint("Сохранение доступно в Telegram Mini App");
@@ -160,7 +188,10 @@ export function WorldStage({
   }, []);
 
   const invite = async () => {
-    const url = `${window.location.origin}/world/${worldId}`;
+    const bot = (import.meta.env.VITE_TG_BOT_USERNAME as string | undefined)?.trim();
+    const { fridayInviteLink } = await import("@/lib/peep/telegram");
+    const tgLink = bot ? fridayInviteLink(bot) : null;
+    const url = tgLink ?? `${window.location.origin}/world/${worldId}`;
     try {
       await navigator.clipboard.writeText(url);
     } catch {
@@ -204,11 +235,30 @@ export function WorldStage({
         onDismissChest={() => gameRef.current?.dismissChest()}
         onEmote={(kind) => gameRef.current?.playEmote(kind)}
         onReset={() => gameRef.current?.resetIsland() ?? Promise.resolve(false)}
-        onSaveWorld={() => void onSaveWorld()}
+        onSaveWorld={isCreator ? () => void onSaveWorld() : undefined}
         saveHint={saveHint}
+        onKickFriday={() => void gameRef.current?.kickFriday()}
+        onToggleLock={() =>
+          void gameRef.current?.setIslandLocked(!hud.islandLocked)
+        }
+        onToggleBuild={() =>
+          void gameRef.current?.setGuestBuildAllowed(!hud.guestBuildAllowed)
+        }
         fullscreen={fullscreen}
         onFullscreen={() => void onFullscreen()}
       />
+
+      {kicked ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/80 px-6">
+          <div className="w-[min(360px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-center text-fg-on-ink">
+            <p className="font-mono text-sm uppercase tracking-widest">вас выгнали</p>
+            <p className="mt-2 text-sm text-muted-on-ink">Хозяин закрыл сессию Пятницы.</p>
+            <Button asChild className="mt-4 w-full rounded-pixel font-mono uppercase" variant="secondary">
+              <Link to="/">на главную</Link>
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {hud.playing ? (
         <>

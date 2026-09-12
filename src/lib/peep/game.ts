@@ -77,7 +77,7 @@ import { ITEM_DEBUG, tickGoldObject } from "./item-voxels";
 import { hatSpot, VoxelWorld } from "./world";
 
 export { buildItemFromJSON } from "./held-item";
-import { applyEdit, heartbeat, listEdits, listPresence, resetWorld } from "./world.functions";
+import { applyEdit, heartbeat, listEdits, listPresence, resetWorld, updateGuestPermissions } from "./world.functions";
 
 export type ControlsProbe = {
   getYaw: () => number;
@@ -148,6 +148,9 @@ export type PeepGameOptions = {
   generation: number;
   isCreator: boolean;
   playerId: string;
+  /** Initial Friday permissions from server join/load. */
+  guestBuildAllowed?: boolean;
+  islandLocked?: boolean;
   /** When set (Telegram load), replaces localStorage story. */
   inventoryOverride?: Story | null;
   onHud: (hud: HudState) => void;
@@ -155,6 +158,8 @@ export type PeepGameOptions = {
   onPlaced?: () => void;
   /** Fired when blocks or inventory change — for lazy server save. */
   onWorldDirty?: () => void;
+  /** Guest was kicked by host. */
+  onKicked?: () => void;
 };
 
 const LOOK_SENS = 0.0022;
@@ -225,6 +230,8 @@ export class PeepGame {
   private cinematic: { t: number } | null = null;
   private hatPrompt = false;
   private chestOffer = false;
+  private guestBuildAllowed = false;
+  private islandLocked = false;
   private readonly keys = new Set<string>();
   private keyOverride: Set<string> | null = null;
   private disposed = false;
@@ -306,6 +313,8 @@ export class PeepGame {
     this.opts = opts;
     this.editCursor = opts.cursor;
     this.generation = opts.generation;
+    this.guestBuildAllowed = Boolean(opts.guestBuildAllowed);
+    this.islandLocked = Boolean(opts.islandLocked);
     this.story = opts.inventoryOverride
       ? structuredClone(opts.inventoryOverride)
       : loadStory(opts.worldId, opts.playerId);
@@ -513,6 +522,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   beginPlace() {
     if (!this.playing || this.cinematic) return;
+    if (!this.canGuestBuild()) return;
     this.placeArmed = false;
     this.placing = true;
     this.placeT = 0;
@@ -545,6 +555,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   beginBreak() {
     if (!this.playing || this.cinematic) return;
+    if (!this.canGuestBuild()) return;
     this.mining = true;
     this.breakT = 0;
     this.breakCharge = 0;
@@ -1678,7 +1689,10 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
     this.rebuildAround(x, z);
     if (block === AIR) this.burst(x, y, z, prev);
     this.opts.onWorldDirty?.();
-    if (sync) {
+    if (!sync) return;
+
+    // Host authority: only the island owner writes SQLite + broadcasts blocks.
+    if (this.opts.isCreator) {
       this.p2p.send({ t: "block", x, y, z, block } satisfies NetMsg);
       void applyEdit({
         data: {
@@ -1708,7 +1722,15 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
           this.failStreak += 1;
           if (this.failStreak > 8) this.opts.onLost();
         });
+      return;
     }
+
+    // Friday: propose to host over P2P only (no server write).
+    this.p2p.send({ t: "block_req", x, y, z, block } satisfies NetMsg);
+  }
+
+  private canGuestBuild(): boolean {
+    return this.opts.isCreator || this.guestBuildAllowed;
   }
 
   private breakBlock() {
@@ -1741,6 +1763,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
   }
 
   private placeBlock() {
+    if (!this.canGuestBuild()) return false;
     if (!this.hit) return false;
     const block = this.currentBlock();
     if (block === AIR) return false;
@@ -1878,6 +1901,19 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       r.last = performance.now();
     } else if (msg.t === "block" && channel === "reliable") {
       this.applyLocal(msg.x, msg.y, msg.z, msg.block, false);
+    } else if (msg.t === "block_req" && channel === "reliable") {
+      if (!this.opts.isCreator || !this.guestBuildAllowed) return;
+      const prev = this.world.get(msg.x, msg.y, msg.z);
+      if (prev === msg.block) return;
+      this.applyLocal(msg.x, msg.y, msg.z, msg.block, true);
+    } else if (msg.t === "perms" && channel === "reliable") {
+      this.guestBuildAllowed = Boolean(msg.buildAllowed);
+      this.islandLocked = Boolean(msg.locked);
+      this.hudDirty = true;
+    } else if (msg.t === "kick" && channel === "reliable") {
+      if (this.opts.isCreator) return;
+      this.p2p.close();
+      this.opts.onKicked?.();
     } else if (msg.t === "look" && channel === "reliable") {
       const r = this.ensureRemote(from, true);
       wearHat(r.group, msg.hat);
@@ -2095,7 +2131,53 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
       hatPrompt: this.hatPrompt,
       chestOffer: this.chestOffer,
       hatBusy: Boolean(this.cinematic),
+      guestBuildAllowed: this.guestBuildAllowed,
+      islandLocked: this.islandLocked,
+      fridayOnline: this.remotes.size > 0,
     });
+  }
+
+  /** Host: kick current Friday and ban their player id if known. */
+  async kickFriday(): Promise<void> {
+    if (!this.opts.isCreator) return;
+    this.p2p.send({ t: "kick", reason: "host" } satisfies NetMsg);
+    const guestId = [...this.remotes.keys()][0];
+    if (guestId) {
+      await updateGuestPermissions({
+        data: { playerId: this.opts.playerId, patch: { banPlayerId: guestId } },
+      });
+    }
+    this.p2p.close();
+    void this.p2p.join();
+    this.hudDirty = true;
+  }
+
+  async setIslandLocked(locked: boolean): Promise<void> {
+    if (!this.opts.isCreator) return;
+    this.islandLocked = locked;
+    await updateGuestPermissions({
+      data: { playerId: this.opts.playerId, patch: { locked } },
+    });
+    this.broadcastPerms();
+    this.hudDirty = true;
+  }
+
+  async setGuestBuildAllowed(buildAllowed: boolean): Promise<void> {
+    if (!this.opts.isCreator) return;
+    this.guestBuildAllowed = buildAllowed;
+    await updateGuestPermissions({
+      data: { playerId: this.opts.playerId, patch: { buildAllowed } },
+    });
+    this.broadcastPerms();
+    this.hudDirty = true;
+  }
+
+  private broadcastPerms() {
+    this.p2p.send({
+      t: "perms",
+      buildAllowed: this.guestBuildAllowed,
+      locked: this.islandLocked,
+    } satisfies NetMsg);
   }
 
   async resetIsland(): Promise<boolean> {

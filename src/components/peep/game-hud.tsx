@@ -65,6 +65,9 @@ export function GameHud({
   onReset,
   onSaveWorld,
   saveHint = null,
+  onKickFriday,
+  onToggleLock,
+  onToggleBuild,
   fullscreen,
   onFullscreen,
 }: {
@@ -80,6 +83,9 @@ export function GameHud({
   onReset: () => Promise<boolean>;
   onSaveWorld?: () => void;
   saveHint?: string | null;
+  onKickFriday?: () => void;
+  onToggleLock?: () => void;
+  onToggleBuild?: () => void;
   fullscreen: boolean;
   onFullscreen: () => void;
 }) {
@@ -419,6 +425,44 @@ export function GameHud({
                 <IconQr className="size-4" />
                 пятница
               </button>
+            ) : null}
+            {hud.isCreator && hud.playing ? (
+              <div className="mt-6 border-t-2 border-border-ink pt-5">
+                <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">
+                  управление пятницей
+                </p>
+                <p className="mt-1 text-xs text-muted-on-ink">
+                  {hud.fridayOnline ? "Пятница на острове" : "Пятница офлайн · соло"}
+                </p>
+                {onKickFriday ? (
+                  <button
+                    type="button"
+                    disabled={!hud.fridayOnline}
+                    onClick={onKickFriday}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide disabled:opacity-40"
+                  >
+                    выгнать
+                  </button>
+                ) : null}
+                {onToggleLock ? (
+                  <button
+                    type="button"
+                    onClick={onToggleLock}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                  >
+                    {hud.islandLocked ? "открыть остров" : "закрыть остров"}
+                  </button>
+                ) : null}
+                {onToggleBuild ? (
+                  <button
+                    type="button"
+                    onClick={onToggleBuild}
+                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                  >
+                    {hud.guestBuildAllowed ? "запретить строительство" : "разрешить строительство"}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {hud.playing && (onSaveWorld || hud.isCreator) ? (
               <div className="mt-6 border-t-2 border-border-ink pt-5">

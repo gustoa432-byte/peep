@@ -26,6 +26,7 @@ export type WorldLoadResult =
       seed: number;
       edits: WorldEditDelta[];
       inventory: Story;
+      guest_permissions?: import("./guest-permissions").GuestPermissions;
     }
   | { ok: false; error: string };
 
