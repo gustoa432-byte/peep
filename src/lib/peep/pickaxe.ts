@@ -19,39 +19,39 @@ const TILE = 16;
 const WOOD = 0;
 const METAL = 1;
 const ACCENT = 2;
+const GEM = 3;
 
-type Kind = 0 | 1 | 2;
+type Kind = 0 | 1 | 2 | 3;
 type Cell = { x: number; y: number; z: number; kind: Kind };
 
 const BASE: [number, number, number][] = [
   [0.72, 0.5, 0.28],
   [0.78, 0.76, 0.74],
   [0.74, 0.38, 0.24],
+  [0.8, 0.667, 0.933],
 ];
 
-/** Handle + terracotta collar + T-head with a pointed pick. ~19 voxels. */
+/** Handle + terracotta collar + T-head with lilac tips. */
 const CELLS: Cell[] = [
   ...[0, 1, 2, 3, 4, 5, 6].map((y) => ({ x: 0, y, z: 0, kind: WOOD as Kind })),
   { x: 0, y: 7, z: 0, kind: ACCENT },
+  { x: -3, y: 8, z: 0, kind: GEM },
   { x: -2, y: 8, z: 0, kind: METAL },
   { x: -1, y: 8, z: 0, kind: METAL },
   { x: 0, y: 8, z: 0, kind: METAL },
   { x: 1, y: 8, z: 0, kind: METAL },
   { x: 2, y: 8, z: 0, kind: METAL },
+  { x: 3, y: 8, z: 0, kind: GEM },
   { x: -1, y: 9, z: 0, kind: METAL },
   { x: 0, y: 9, z: 0, kind: METAL },
   { x: 1, y: 9, z: 0, kind: METAL },
-  { x: -2, y: 8, z: -1, kind: METAL },
-  { x: -3, y: 8, z: -1, kind: METAL },
-  { x: -3, y: 8, z: -2, kind: METAL },
-  { x: 2, y: 8, z: 1, kind: METAL },
 ];
 
 /** Outer face of the pointed head — break contact, not the group center. */
 export const PICKAXE_TIP = {
-  x: (-3 - 0) * UNIT,
+  x: -3 * UNIT,
   y: (8 - GRIP_Y + 0.5) * UNIT,
-  z: -2 * UNIT,
+  z: 0,
 };
 
 function cellKey(x: number, y: number, z: number): string {
@@ -76,6 +76,7 @@ function paint(kind: Kind, x: number, y: number): number {
     return 0.7 + a * 0.22 + stripe;
   }
   if (kind === METAL) return 0.72 + a * 0.28 + (b > 0.84 ? -0.32 : 0) + (b < 0.12 ? 0.16 : 0);
+  if (kind === GEM) return 0.76 + a * 0.24 + (b > 0.86 ? 0.2 : 0);
   return 0.7 + a * 0.22 + (b > 0.82 ? 0.14 : 0);
 }
 
@@ -84,7 +85,7 @@ export function createPickaxeAtlas(): THREE.DataTexture {
   const data = new Uint8Array(ATLAS * ATLAS * 4);
   for (let ty = 0; ty < 2; ty++) {
     for (let tx = 0; tx < 2; tx++) {
-      const kind = (tx + ty * 2 === 2 ? ACCENT : tx === 1 ? METAL : WOOD) as Kind;
+      const kind = (tx + ty * 2) as Kind;
       for (let y = 0; y < TILE; y++) {
         for (let x = 0; x < TILE; x++) {
           const m = Math.min(1.22, Math.max(0.52, paint(kind, x, y)));
@@ -163,8 +164,8 @@ function buildGeometry(): THREE.BufferGeometry {
 
   for (const cell of CELLS) {
     const [br, bg, bb] = BASE[cell.kind]!;
-    const tileX = cell.kind === METAL ? 1 : 0;
-    const tileY = cell.kind === ACCENT ? 1 : 0;
+    const tileX = cell.kind === METAL || cell.kind === GEM ? 1 : 0;
+    const tileY = cell.kind === ACCENT || cell.kind === GEM ? 1 : 0;
     const u0 = (tileX + 0.5 / TILE) / 2;
     const u1 = (tileX + (TILE - 0.5) / TILE) / 2;
     const v0 = (tileY + 0.5 / TILE) / 2;
