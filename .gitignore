@@ -4,6 +4,7 @@ dist
 .vercel
 .tanstack
 .output
+.local
 .env
 .env.*
 !.env.example
