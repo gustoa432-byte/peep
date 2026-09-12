@@ -66,14 +66,18 @@ export const WALK_SPEED = 4.6;
 export const CROUCH_SPEED_MUL = 0.42;
 export const JUMP_SPEED = 8.2;
 export const GRAVITY = 23;
-/** CS-style bunnyhop: timing window around landing, speed stack, hard cap. */
-export const BHOP_WINDOW_S = 0.12;
-export const BHOP_STEP = 0.2;
-export const BHOP_MAX = 2.5;
-export const BHOP_AIR_CONTROL = 0.55;
+/** Arcade bhop: soft air steer, bounce mul, ice-like ground slide. */
+export const BHOP_MAX_MUL = 2.2;
+export const BHOP_BOUNCE_MUL = 1.1;
+/** How fast air velocity turns toward wish (higher = snappier). */
+export const BHOP_AIR_TURN = 7.5;
+/** Drag when airborne with no move keys. */
+export const BHOP_AIR_DRAG = 0.9;
+/** Ground slide friction when not chaining jumps. */
+export const GROUND_FRICTION = 5.5;
+/** How quickly walk wish catches the ground velocity. */
+export const GROUND_ACCEL = 14;
 export const BHOP_AIR_CROUCH_GRAVITY = 0.82;
-/** If horizontal speed collapses below this fraction after collision, reset bhop. */
-export const BHOP_WALL_SPEED_FRAC = 0.35;
 export const PRESENCE_TTL_SECONDS = 12;
 /** Edits per window, stored in Postgres so a cold start cannot reset the cap. */
 export const RATE_WINDOW_SECONDS = 8;
