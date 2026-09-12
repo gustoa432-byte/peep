@@ -15,7 +15,6 @@ const WOOD = "#8b5a2b";
 const METAL = "#808080";
 const TERRA = "#b85c38";
 const GEM = "#ccaaee";
-const CLAY = "#c4b8ac";
 const SKIN = "#e8c4a8";
 const WHITE = "#f6efe6";
 const IRIS = "#2a221c";
@@ -87,7 +86,7 @@ export type ForgeTemplateId =
   | "pickaxe";
 
 export const FORGE_TEMPLATES: { id: ForgeTemplateId; label: string; voxels: ItemVoxel[] }[] = [
-  { id: "cube", label: "пустой блок", voxels: cube16(CLAY) },
+  { id: "cube", label: "пустой блок", voxels: [] },
   { id: "grass", label: "трава", voxels: cube16(blockHex(GRASS)) },
   { id: "dirt", label: "земля", voxels: cube16(blockHex(DIRT)) },
   { id: "stone", label: "камень", voxels: cube16(blockHex(STONE)) },

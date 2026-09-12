@@ -170,6 +170,18 @@
     animation: peep-gold-shimmer 0.75s steps(1) infinite;
   }
 
+  .peep-air-swatch {
+    background:
+      linear-gradient(45deg, #2a3340 25%, transparent 25%),
+      linear-gradient(-45deg, #2a3340 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2a3340 75%),
+      linear-gradient(-45deg, transparent 75%, #2a3340 75%);
+    background-color: #6a90b8;
+    background-size: 8px 8px;
+    background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+    opacity: 0.85;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

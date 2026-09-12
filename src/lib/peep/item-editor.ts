@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CASTAWAY, createAvatar, createLocalArm } from "./avatar";
 import {
+  AIR_COLOR,
   DEFAULT_PAINT,
   applyGoldSparkle,
   applyItemTransform,
@@ -9,9 +10,11 @@ import {
   createItemMaterial,
   defaultTransform,
   hexToInt,
+  isAirColor,
   isGoldHex,
   itemCubeGeometry,
   normalizeHex,
+  normalizePaint,
   readStoredDocument,
   tickGoldObject,
   writeStoredDocument,
@@ -171,9 +174,16 @@ export class ItemEditor {
   }
 
   setColor(color: string) {
+    if (isAirColor(color)) {
+      this.color = AIR_COLOR;
+      this.ghostMat.color.setHex(0x6a90b8);
+      this.ghostMat.opacity = 0.22;
+      return;
+    }
     const hex = normalizeHex(color) ?? DEFAULT_PAINT;
     this.color = hex;
     this.ghostMat.color.setHex(hexToInt(hex));
+    this.ghostMat.opacity = 0.35;
   }
 
   getColor(): string {
@@ -355,7 +365,7 @@ export class ItemEditor {
   private addMany(voxels: ItemVoxel[]) {
     for (const v of voxels) {
       if (!this.inBounds(v.x, v.y, v.z)) continue;
-      const color = normalizeHex(v.color) ?? DEFAULT_PAINT;
+      const color = normalizePaint(v.color);
       this.cells.set(keyOf(v.x, v.y, v.z), { x: v.x, y: v.y, z: v.z, color });
     }
   }
@@ -387,6 +397,36 @@ export class ItemEditor {
       if (v.color === color) list.push(v);
     }
     if (!list.length) return;
+
+    // Air spacers: faint wireframe in the editor only — never in the held mesh.
+    if (isAirColor(color)) {
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x6a90b8,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+      });
+      const inst = new THREE.InstancedMesh(geo, mat, list.length);
+      inst.frustumCulled = false;
+      inst.userData.color = AIR_COLOR;
+      inst.userData.air = true;
+      inst.visible = !this.preview;
+      const keys: string[] = [];
+      list.forEach((v, i) => {
+        this.dummy.position.set(v.x, v.y, v.z);
+        this.dummy.updateMatrix();
+        inst.setMatrixAt(i, this.dummy.matrix);
+        keys.push(keyOf(v.x, v.y, v.z));
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      this.scene.add(inst);
+      this.batches.set(color, inst);
+      this.batchKeys.set(color, keys);
+      return;
+    }
+
     const geo = itemCubeGeometry(1, color);
     const inst = new THREE.InstancedMesh(geo, this.material(color), list.length);
     inst.frustumCulled = false;
