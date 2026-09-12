@@ -6,9 +6,6 @@ export const FORGE_STORAGE_KEY = "peep.forge.item";
 /** One editor cell is this many overlay units in the hand. */
 export const ITEM_UNIT = 0.1;
 
-export const ITEM_KINDS = ["wood", "metal", "accent", "gold", "cloth"] as const;
-export type ItemKind = (typeof ITEM_KINDS)[number];
-
 export type ItemVoxel = {
   x: number;
   y: number;
@@ -16,41 +13,52 @@ export type ItemVoxel = {
   color: string;
 };
 
-export const ITEM_HEX: Record<ItemKind, string> = {
+export type ItemTransform = {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+};
+
+export type ItemDocument = {
+  voxels: ItemVoxel[];
+  transform: ItemTransform;
+};
+
+/** Game-style swatches. Terracotta sits as the accent. */
+export const FORGE_SWATCHES = [
+  "#1a1612",
+  "#3a332c",
+  "#8a7e72",
+  "#c4b8ac",
+  "#f3eee6",
+  "#e8c4a8",
+  "#8b5a2b",
+  "#8a5a38",
+  "#b85c38",
+  "#a33b2a",
+  "#5f7a53",
+  "#3fa83c",
+  "#d2b27a",
+  "#7a7670",
+  "#808080",
+  "#ffd700",
+  "#8eb8d4",
+  "#1b5368",
+] as const;
+
+export const DEFAULT_PAINT: string = FORGE_SWATCHES[6];
+
+/** Old кузница `kind` values → flat palette hex. */
+const KIND_HEX: Record<string, string> = {
   wood: "#8b5a2b",
   metal: "#808080",
   accent: "#b85c38",
   gold: "#ffd700",
   cloth: "#1a1612",
-};
-
-export const ITEM_COLORS: Record<ItemKind, number> = {
-  wood: 0x8b5a2b,
-  metal: 0x808080,
-  accent: 0xb85c38,
-  gold: 0xffd700,
-  cloth: 0x1a1612,
-};
-
-export const ITEM_LABELS: Record<ItemKind, string> = {
-  wood: "дерево",
-  metal: "металл",
-  accent: "терракота",
-  gold: "золото",
-  cloth: "ткань",
-};
-
-/** Old кузница `kind` values → flat palette hex. */
-const KIND_HEX: Record<string, string> = {
-  wood: ITEM_HEX.wood,
-  metal: ITEM_HEX.metal,
-  accent: ITEM_HEX.accent,
-  gold: ITEM_HEX.gold,
-  cloth: ITEM_HEX.cloth,
-  dirt: ITEM_HEX.wood,
-  stone: ITEM_HEX.metal,
-  grass: ITEM_HEX.accent,
-  sand: ITEM_HEX.gold,
+  dirt: "#8a5a38",
+  stone: "#7a7670",
+  grass: "#5f7a53",
+  sand: "#d2b27a",
 };
 
 export type ItemDebugTransform = {
@@ -63,7 +71,7 @@ export type ItemDebugTransform = {
   scale: number;
 };
 
-/** Live rest pose for the overlay item. Leva writes here; the game reads it. */
+/** Live rest pose for the overlay item. Leva / примерочная write here. */
 export const ITEM_DEBUG: ItemDebugTransform = {
   x: PICKAXE_REST.x,
   y: PICKAXE_REST.y,
@@ -74,17 +82,34 @@ export const ITEM_DEBUG: ItemDebugTransform = {
   scale: 0.88,
 };
 
-export function kindFromHex(color: string): ItemKind {
-  const hex = normalizeHex(color);
-  if (!hex) return "wood";
-  for (const kind of ITEM_KINDS) {
-    if (ITEM_HEX[kind] === hex) return kind;
-  }
-  return "wood";
+export function defaultTransform(): ItemTransform {
+  return {
+    position: [PICKAXE_REST.x, PICKAXE_REST.y, PICKAXE_REST.z],
+    rotation: [PICKAXE_REST.rx, PICKAXE_REST.ry, PICKAXE_REST.rz],
+    scale: 0.88,
+  };
+}
+
+export function transformFromDebug(): ItemTransform {
+  return {
+    position: [ITEM_DEBUG.x, ITEM_DEBUG.y, ITEM_DEBUG.z],
+    rotation: [ITEM_DEBUG.rx, ITEM_DEBUG.ry, ITEM_DEBUG.rz],
+    scale: ITEM_DEBUG.scale,
+  };
+}
+
+export function applyItemTransform(t: ItemTransform) {
+  ITEM_DEBUG.x = t.position[0];
+  ITEM_DEBUG.y = t.position[1];
+  ITEM_DEBUG.z = t.position[2];
+  ITEM_DEBUG.rx = t.rotation[0];
+  ITEM_DEBUG.ry = t.rotation[1];
+  ITEM_DEBUG.rz = t.rotation[2];
+  ITEM_DEBUG.scale = t.scale;
 }
 
 export function hexToInt(color: string): number {
-  const hex = normalizeHex(color) ?? ITEM_HEX.wood;
+  const hex = normalizeHex(color) ?? DEFAULT_PAINT;
   return Number.parseInt(hex.slice(1), 16);
 }
 
@@ -105,12 +130,10 @@ export function normalizeHex(value: unknown): string | null {
 }
 
 function colorFromRow(rec: Record<string, unknown>): string {
-  return normalizeHex(rec.color) ?? KIND_HEX[String(rec.kind ?? "")] ?? ITEM_HEX.wood;
+  return normalizeHex(rec.color) ?? KIND_HEX[String(rec.kind ?? "")] ?? DEFAULT_PAINT;
 }
 
-export function parseItemVoxels(jsonString: string): ItemVoxel[] {
-  const data: unknown = JSON.parse(jsonString);
-  if (!Array.isArray(data)) throw new Error("item json must be an array");
+function parseVoxelArray(data: unknown[]): ItemVoxel[] {
   const out: ItemVoxel[] = [];
   const seen = new Set<string>();
   for (const row of data) {
@@ -131,47 +154,101 @@ export function parseItemVoxels(jsonString: string): ItemVoxel[] {
   return out;
 }
 
-export function serializeItemVoxels(voxels: ItemVoxel[]): string {
-  return JSON.stringify(
-    voxels.map((v) => ({
+function num(value: unknown, fallback: number): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function parseTransform(raw: unknown): ItemTransform {
+  const fallback = defaultTransform();
+  if (!raw || typeof raw !== "object") return fallback;
+  const rec = raw as Record<string, unknown>;
+  const pos = rec.position;
+  const rot = rec.rotation;
+  if (Array.isArray(pos) && Array.isArray(rot)) {
+    return {
+      position: [num(pos[0], fallback.position[0]), num(pos[1], fallback.position[1]), num(pos[2], fallback.position[2])],
+      rotation: [num(rot[0], fallback.rotation[0]), num(rot[1], fallback.rotation[1]), num(rot[2], fallback.rotation[2])],
+      scale: num(rec.scale, fallback.scale),
+    };
+  }
+  return {
+    position: [num(rec.x, fallback.position[0]), num(rec.y, fallback.position[1]), num(rec.z, fallback.position[2])],
+    rotation: [num(rec.rx, fallback.rotation[0]), num(rec.ry, fallback.rotation[1]), num(rec.rz, fallback.rotation[2])],
+    scale: num(rec.scale, fallback.scale),
+  };
+}
+
+export function parseItemDocument(jsonString: string): ItemDocument {
+  const data: unknown = JSON.parse(jsonString);
+  if (Array.isArray(data)) {
+    return { voxels: parseVoxelArray(data), transform: defaultTransform() };
+  }
+  if (!data || typeof data !== "object") throw new Error("item json must be an object or array");
+  const rec = data as Record<string, unknown>;
+  const list = Array.isArray(rec.voxels) ? rec.voxels : [];
+  return { voxels: parseVoxelArray(list), transform: parseTransform(rec.transform) };
+}
+
+/** @deprecated prefer parseItemDocument — still accepts a bare voxel array. */
+export function parseItemVoxels(jsonString: string): ItemVoxel[] {
+  return parseItemDocument(jsonString).voxels;
+}
+
+export function serializeItemDocument(doc: ItemDocument): string {
+  return JSON.stringify({
+    voxels: doc.voxels.map((v) => ({
       x: v.x,
       y: v.y,
       z: v.z,
-      color: normalizeHex(v.color) ?? ITEM_HEX.wood,
+      color: normalizeHex(v.color) ?? DEFAULT_PAINT,
     })),
-  );
+    transform: {
+      position: [...doc.transform.position] as [number, number, number],
+      rotation: [...doc.transform.rotation] as [number, number, number],
+      scale: doc.transform.scale,
+    },
+  });
 }
 
-export function readStoredItem(): ItemVoxel[] | null {
+export function readStoredDocument(): ItemDocument | null {
   if (typeof localStorage === "undefined") return null;
   const raw = localStorage.getItem(FORGE_STORAGE_KEY);
   if (!raw) return null;
   try {
-    const voxels = parseItemVoxels(raw);
-    return voxels.length ? voxels : null;
+    const doc = parseItemDocument(raw);
+    return doc.voxels.length ? doc : { ...doc, voxels: [] };
   } catch {
     return null;
   }
 }
 
-export function writeStoredItem(voxels: ItemVoxel[]) {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(FORGE_STORAGE_KEY, serializeItemVoxels(voxels));
+export function readStoredItem(): ItemVoxel[] | null {
+  const doc = readStoredDocument();
+  if (!doc || !doc.voxels.length) return null;
+  return doc.voxels;
 }
 
-/**
- * Merge a кузница export into one overlay group (InstancedMesh).
- * Coordinates are editor cells around (0,0,0). Flat hex, no terrain atlas.
- */
-export function buildItemFromJSON(jsonString: string): THREE.Group {
-  const voxels = parseItemVoxels(jsonString);
+export function writeStoredDocument(doc: ItemDocument) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(FORGE_STORAGE_KEY, serializeItemDocument(doc));
+}
+
+export function writeStoredItem(voxels: ItemVoxel[]) {
+  writeStoredDocument({
+    voxels,
+    transform: transformFromDebug(),
+  });
+}
+
+export function buildItemFromVoxels(voxels: ItemVoxel[]): THREE.Group {
   const g = new THREE.Group();
   g.name = "forgeItem";
   if (!voxels.length) return g;
 
   const byColor = new Map<string, ItemVoxel[]>();
   for (const v of voxels) {
-    const color = normalizeHex(v.color) ?? ITEM_HEX.wood;
+    const color = normalizeHex(v.color) ?? DEFAULT_PAINT;
     const list = byColor.get(color) ?? [];
     list.push(v);
     byColor.set(color, list);
@@ -192,4 +269,20 @@ export function buildItemFromJSON(jsonString: string): THREE.Group {
     g.add(inst);
   }
   return g;
+}
+
+/**
+ * Merge a кузница export into one overlay group (InstancedMesh).
+ * Accepts a JSON string, a voxel array, or a full document.
+ */
+export function buildItemFromJSON(input: string | ItemVoxel[] | ItemDocument): THREE.Group {
+  if (typeof input === "string") return buildItemFromVoxels(parseItemDocument(input).voxels);
+  if (Array.isArray(input)) return buildItemFromVoxels(input);
+  return buildItemFromVoxels(input.voxels);
+}
+
+export function poseHeldGroup(group: THREE.Group, t: ItemTransform = transformFromDebug()) {
+  group.position.set(t.position[0], t.position[1], t.position[2]);
+  group.rotation.set(t.rotation[0], t.rotation[1], t.rotation[2]);
+  group.scale.setScalar(t.scale);
 }

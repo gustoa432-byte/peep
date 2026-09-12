@@ -1,15 +1,30 @@
 import type { Group } from "three";
 import { createPickaxe } from "./pickaxe";
 import { ITEM_DRAFT } from "./item-draft";
-import { buildItemFromJSON, ITEM_DEBUG, readStoredItem } from "./item-voxels";
+import {
+  applyItemTransform,
+  buildItemFromVoxels,
+  defaultTransform,
+  poseHeldGroup,
+  readStoredDocument,
+  type ItemDocument,
+} from "./item-voxels";
+
+function resolveDocument(): ItemDocument | null {
+  const stored = readStoredDocument();
+  if (stored && stored.voxels.length) return stored;
+  if (ITEM_DRAFT && ITEM_DRAFT.length) {
+    return { voxels: ITEM_DRAFT, transform: stored?.transform ?? defaultTransform() };
+  }
+  return null;
+}
 
 export function createHeldItem(): Group {
-  const draft = readStoredItem() ?? ITEM_DRAFT;
-  if (draft && draft.length > 0) {
-    const g = buildItemFromJSON(JSON.stringify(draft));
-    g.position.set(ITEM_DEBUG.x, ITEM_DEBUG.y, ITEM_DEBUG.z);
-    g.rotation.set(ITEM_DEBUG.rx, ITEM_DEBUG.ry, ITEM_DEBUG.rz);
-    g.scale.setScalar(ITEM_DEBUG.scale);
+  const doc = resolveDocument();
+  if (doc && doc.voxels.length) {
+    applyItemTransform(doc.transform);
+    const g = buildItemFromVoxels(doc.voxels);
+    poseHeldGroup(g, doc.transform);
     return g;
   }
   return createPickaxe();
