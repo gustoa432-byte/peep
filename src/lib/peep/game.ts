@@ -241,7 +241,7 @@ export class PeepGame {
   /** Touch stick axis: +x strafes right, +z walks forward. Additive with WASD. */
   private moveX = 0;
   private moveZ = 0;
-  private selected = 0;
+  private selected = 1;
   private hit: VoxelHit | null = null;
   private swing = 0;
   private placing = false;
@@ -1498,6 +1498,7 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private currentBlock(): number {
     const block = this.palette()[this.selected] ?? AIR;
+    if (block === AIR) return AIR;
     if (countOf(this.story, block) <= 0) return AIR;
     return block;
   }
@@ -1583,6 +1584,22 @@ gl_FragColor = vec4( outgoingLight, diffuseColor.a );`,
 
   private placeBlock() {
     if (!this.hit) return false;
+    const selected = this.palette()[this.selected] ?? AIR;
+
+    // «Пусто»: стереть выбранный блок (без удержания кирки), ресурс возвращается.
+    if (selected === AIR) {
+      const { x, y, z } = this.hit;
+      const prev = this.world.get(x, y, z);
+      if (prev === AIR) return false;
+      if (prev !== AIR) addBlock(this.story, prev);
+      this.persist();
+      this.applyLocal(x, y, z, AIR, true);
+      this.audio.strike(prev);
+      this.swing = 0.6;
+      this.hudDirty = true;
+      return true;
+    }
+
     const block = this.currentBlock();
     if (block === AIR) return false;
     const x = this.hit.x + this.hit.nx;
