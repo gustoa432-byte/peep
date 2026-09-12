@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { AIR, CHUNK_S, WORLD_SX, WORLD_SY, WORLD_SZ } from "./constants";
+import { AIR, CHUNK_S, WORLD_SY } from "./constants";
 import { faceTint, vertexGrain } from "./textures";
 import type { VoxelWorld } from "./world";
 
@@ -12,11 +12,11 @@ export function chunkOrigin(cx: number, cz: number): { x0: number; z0: number } 
 }
 
 export function chunkCountX(): number {
-  return WORLD_SX / CHUNK_S;
+  return 3;
 }
 
 export function chunkCountZ(): number {
-  return WORLD_SZ / CHUNK_S;
+  return 3;
 }
 
 function occluded(world: VoxelWorld, x: number, y: number, z: number): boolean {
@@ -66,11 +66,9 @@ type Axis = 0 | 1 | 2;
  */
 export function buildChunkGeometry(world: VoxelWorld, cx: number, cz: number): THREE.BufferGeometry {
   const { x0, z0 } = chunkOrigin(cx, cz);
-  const x1 = Math.min(x0 + CHUNK_S, WORLD_SX);
-  const z1 = Math.min(z0 + CHUNK_S, WORLD_SZ);
-  const sx = x1 - x0;
+  const sx = CHUNK_S;
   const sy = WORLD_SY;
-  const sz = z1 - z0;
+  const sz = CHUNK_S;
 
   const positions: number[] = [];
   const normals: number[] = [];

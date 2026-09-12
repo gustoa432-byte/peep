@@ -86,27 +86,29 @@ function Home() {
   };
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-bg text-fg">
+    <main className="relative min-h-dvh text-fg">
+      <div className="pointer-events-none fixed inset-0" aria-hidden>
+        <img
+          src="/menu-cover.png"
+          alt=""
+          width={1280}
+          height={720}
+          className="peep-menu-cover"
+        />
+        <div className="peep-menu-wash absolute inset-0" />
+      </div>
       {phone ? (
         <button
           type="button"
           aria-label="Настройки"
-          className="absolute right-5 top-5 z-20 flex size-11 items-center justify-center rounded-pixel border-2 border-border bg-surface text-fg shadow-[var(--shadow-panel)]"
+          className="peep-menu-panel absolute right-5 top-5 z-20 flex size-11 items-center justify-center rounded-pixel border-2 border-border text-fg shadow-[var(--shadow-panel)]"
           onClick={() => setSettingsOpen(true)}
         >
           <IconGear className="size-5" />
         </button>
       ) : null}
-      <div className="pointer-events-none absolute inset-0 opacity-70" aria-hidden>
-        <div className="pointer-events-none absolute -left-16 top-24 size-40 rotate-12 bg-sage/20" />
-        <div className="pointer-events-none absolute left-16 top-40 size-24 bg-primary/20" />
-        <div className="pointer-events-none absolute right-[12%] top-28 size-28 -rotate-6 bg-block-sand/35" />
-        <div className="pointer-events-none absolute right-[18%] top-52 size-16 bg-block-dirt/30" />
-        <div className="pointer-events-none absolute bottom-24 left-[18%] size-20 rotate-6 bg-block-stone/25" />
-      </div>
-
-      <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 py-16">
-        <div className="flex flex-1 flex-col justify-center">
+      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-xl flex-col px-6 pt-14 pb-8">
+        <div>
         <p className="font-mono text-xs font-medium uppercase tracking-widest text-muted">voxel · together</p>
         <h1 className="mt-3 font-display text-6xl font-semibold leading-none tracking-tight md:text-7xl">
           Peep
@@ -117,10 +119,17 @@ function Home() {
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
           Один маленький мир. Два человека. Несколько блоков. Одна ссылка.
         </p>
+        </div>
 
-        <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+        <div className="min-h-24 flex-1" aria-hidden />
+
+        <div>
+        <div className="flex flex-col gap-3 sm:flex-row">
           <Button size="lg" className="min-h-12 flex-1" onClick={() => void onCreate()} disabled={busy}>
             {busy ? "создаём…" : "создать мир"}
+          </Button>
+          <Button asChild variant="secondary" size="lg" className="min-h-12 flex-1">
+            <Link to="/editor">кузница</Link>
           </Button>
         </div>
 
@@ -146,9 +155,9 @@ function Home() {
         {worlds.length > 0 ? (
           <section className="mt-8">
             <p className="mb-2 font-mono text-xs font-medium uppercase tracking-widest text-muted">мои миры</p>
-            <ul className="flex flex-col gap-2">
+            <ul className="flex max-h-48 flex-col gap-2 overflow-y-auto">
               {worlds.map((w) => (
-                <li key={w.id} className="rounded-pixel border-2 border-border bg-surface shadow-[var(--shadow-panel)]">
+                <li key={w.id} className="peep-menu-panel rounded-pixel border-2 border-border shadow-[var(--shadow-panel)]">
                   {confirmId === w.id ? (
                     <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-center">
                       <p className="min-w-0 flex-1 text-sm leading-snug text-fg">
@@ -203,7 +212,7 @@ function Home() {
         ) : null}
 
         {nudge && !install.installed ? (
-          <aside className="mt-8 flex items-start gap-3 rounded-pixel border-2 border-border bg-surface p-4 shadow-[var(--shadow-panel)]">
+          <aside className="peep-menu-panel mt-8 flex items-start gap-3 rounded-pixel border-2 border-border p-4 shadow-[var(--shadow-panel)]">
             <IconPhone className="mt-0.5 size-5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
               <p className="font-display text-base font-semibold leading-tight">Добавить Peep на главный экран</p>
@@ -230,28 +239,12 @@ function Home() {
         ) : null}
 
         {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
-
-        <ul className="mt-14 grid grid-cols-6 gap-2" aria-hidden>
-          {[
-            ["bg-block-grass", "Grass"],
-            ["bg-block-dirt", "Dirt"],
-            ["bg-block-stone", "Stone"],
-            ["bg-block-wood", "Wood"],
-            ["bg-block-sand", "Sand"],
-            ["bg-block-leaf", "Leaves"],
-          ].map(([color, name]) => (
-            <li key={name} className="flex flex-col items-center gap-2">
-              <span className={`size-10 rounded-sm border border-border shadow-panel ${color}`} />
-              <span className="text-xs text-muted">{name}</span>
-            </li>
-          ))}
-        </ul>
         </div>
 
-        <footer className="mt-14 border-t border-border pt-5 pb-10">
+        <footer className="mt-10 border-t border-border/70 pt-5">
           <p className="mb-2 font-mono text-xs font-medium uppercase tracking-widest text-muted">контакты</p>
           <a
-            href="https://t.me/peep_gm"
+            href="https://t.me/peepland"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex min-h-11 items-center gap-2 font-mono text-sm uppercase tracking-wide text-fg hover:text-primary"

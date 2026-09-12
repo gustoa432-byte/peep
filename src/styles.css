@@ -19,6 +19,7 @@
   --color-block-wood: #b07a45;
   --color-block-sand: #d2b27a;
   --color-block-leaf: #3fa83c;
+  --color-block-gold: #e2b84a;
   --color-danger: #a33b2a;
   --font-display: "Syne", "Segoe UI", system-ui, sans-serif;
   --font-sans: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -59,6 +60,33 @@
   button:not(:disabled),
   [role="button"]:not(:disabled) {
     cursor: pointer;
+  }
+
+  .peep-menu-cover {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 90% 55%;
+  }
+
+  @media (min-width: 768px) {
+    .peep-menu-cover {
+      object-position: 48% 42%;
+    }
+  }
+
+  .peep-menu-wash {
+    background: linear-gradient(
+      to top,
+      color-mix(in srgb, var(--color-bg) 52%, transparent) 0%,
+      color-mix(in srgb, var(--color-bg) 10%, transparent) 26%,
+      transparent 50%
+    );
+  }
+
+  .peep-menu-panel {
+    background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+    backdrop-filter: blur(4px);
   }
 
   @media (prefers-reduced-motion: reduce) {

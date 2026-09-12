@@ -7,9 +7,8 @@ import {
   RATE_MAX_EDITS,
   RATE_WINDOW_SECONDS,
   WORLD_ID_RE,
-  WORLD_SX,
+  WORLD_EDIT_LIM,
   WORLD_SY,
-  WORLD_SZ,
 } from "./constants";
 import type {
   ApplyEditResult,
@@ -25,10 +24,10 @@ const worldId = z.string().regex(WORLD_ID_RE);
 const playerId = z.string().regex(/^[a-zA-Z0-9_-]{4,32}$/);
 const blockCoord = z.object({
   worldId,
-  x: z.number().int().min(0).max(WORLD_SX - 1),
+  x: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
   y: z.number().int().min(0).max(WORLD_SY - 1),
-  z: z.number().int().min(0).max(WORLD_SZ - 1),
-  block: z.number().int().min(0).max(6),
+  z: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
+  block: z.number().int().min(0).max(8),
 });
 
 const ALPH = "abcdefghjkmnpqrstuvwxyz23456789";

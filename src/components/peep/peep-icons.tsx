@@ -36,11 +36,19 @@ export function IconJump({ className }: { className?: string }) {
   );
 }
 
+/** 16×16 sprite of the V2 voxel pickaxe: wood handle, terracotta collar, metal tip. */
 export function IconPick({ className }: { className?: string }) {
   return (
-    <Pixel className={className}>
-      <Dots cells="M9 1h5v2h-1v1h-1v1H11v1H9V5H8V4H7V3h2V1zM8 6h2v2H8V6zM6 8h2v2H6V8zM4 10h2v2H4v-2zM2 12h2v3H1v-2h1v-1z" />
-    </Pixel>
+    <svg
+      viewBox="0 0 16 16"
+      className={cn("size-4 shrink-0", className)}
+      shapeRendering="crispEdges"
+      aria-hidden
+    >
+      <path fill="var(--color-block-wood)" d="M1 13h1v2H1zM2 11h1v2H2zM3 9h1v2H3zM4 7h1v2H4zM5 6h1v2H5zM6 5h2v2H6z" />
+      <path fill="var(--color-primary)" d="M7 4h2v1H7z" />
+      <path fill="var(--color-block-stone)" d="M6 1h6v1H6zM5 2h7v1H5zM10 3h3v1h-3zM11 4h2v1h-2zM12 5h2v1h-2z" />
+    </svg>
   );
 }
 

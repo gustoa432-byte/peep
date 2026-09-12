@@ -10,14 +10,25 @@ const MOUTH = 0x6a3a36;
 export type AvatarPalette = {
   body: number;
   accent: number;
+  skin: number;
 };
 
-export type FaceMood = "idle" | EmoteKind;
+export type AvatarKind = "castaway" | "friday";
 
-export const PALETTES: AvatarPalette[] = [
-  { body: 0xb85c38, accent: 0x3a241c },
-  { body: 0x3d6e6b, accent: 0x1c3230 },
-];
+export type FaceMood = "idle" | "wink" | EmoteKind;
+
+export const CASTAWAY: AvatarPalette = { body: 0x5a4636, accent: 0x2a2218, skin: 0xe4c2a0 };
+export const FRIDAY: AvatarPalette = { body: 0x2d4a38, accent: 0x1a1610, skin: 0x3c281c };
+
+export const PALETTES: AvatarPalette[] = [CASTAWAY, FRIDAY];
+
+export function lookFor(isCreator: boolean): AvatarPalette {
+  return isCreator ? CASTAWAY : FRIDAY;
+}
+
+export function remoteLook(selfIsCreator: boolean): AvatarPalette {
+  return selfIsCreator ? FRIDAY : CASTAWAY;
+}
 
 export function paletteFor(id: string, otherId?: string): AvatarPalette {
   if (otherId) return id < otherId ? PALETTES[0]! : PALETTES[1]!;
@@ -27,7 +38,7 @@ export function paletteFor(id: string, otherId?: string): AvatarPalette {
 }
 
 /** Shoulder-pivoted arm so a wave moves the hand, not the torso stub. */
-function makeArm(x: number, color: number): THREE.Group {
+function makeArm(x: number, color: number, skin: number): THREE.Group {
   const arm = new THREE.Group();
   arm.position.set(x, 1.16, 0);
   const upper = box(0.14, 0.26, 0.14, color, -0.13);
@@ -37,7 +48,7 @@ function makeArm(x: number, color: number): THREE.Group {
   hand.name = "hand";
   hand.position.set(0, -0.27, 0);
   const forearm = box(0.13, 0.22, 0.13, color, -0.1);
-  const palm = box(0.11, 0.11, 0.11, SKIN, -0.24);
+  const palm = box(0.11, 0.11, 0.11, skin, -0.24);
   hand.add(forearm, palm);
   arm.add(hand);
   return arm;
@@ -65,13 +76,45 @@ function box(
  * Readable clay figure, not a Steve clone: larger head, shorter limbs, a face
  * on the look direction (−Z) so Wave / Hearts / Laugh are visible to a friend.
  */
-export function createAvatar(palette: AvatarPalette): THREE.Group {
+export function createTopHat(): THREE.Group {
+  const hat = new THREE.Group();
+  hat.name = "hat";
+  const brim = box(0.5, 0.04, 0.5, 0x161414, 0);
+  const crown = box(0.28, 0.22, 0.28, 0x141212, 0.13);
+  const band = box(0.3, 0.05, 0.3, 0xa33b2a, 0.05);
+  hat.add(brim, crown, band);
+  return hat;
+}
+
+function createMonocle(): THREE.Group {
   const g = new THREE.Group();
+  g.name = "monocle";
+  const ring = box(0.12, 0.12, 0.02, 0xd4b45a, 0.04, 0.09, -0.22);
+  const glass = box(0.07, 0.07, 0.012, 0xc8dce8, 0.04, 0.09, -0.228);
+  const glassMat = (glass.material as THREE.MeshLambertMaterial);
+  glassMat.transparent = true;
+  glassMat.opacity = 0.35;
+  const chain = box(0.018, 0.16, 0.018, 0xc4a24a, -0.06, 0.16, -0.18);
+  g.add(ring, glass, chain);
+  return g;
+}
+
+export function wearHat(group: THREE.Group, on: boolean) {
+  const hat = group.getObjectByName("hat");
+  if (hat) hat.visible = on;
+}
+
+export function createAvatar(
+  palette: AvatarPalette,
+  extras: { monocle?: boolean; hat?: boolean } = {},
+): THREE.Group {
+  const g = new THREE.Group();
+  const skin = palette.skin ?? SKIN;
 
   const head = new THREE.Group();
   head.name = "head";
   head.position.set(0, 1.42, 0);
-  const skull = box(0.4, 0.4, 0.4, SKIN, 0);
+  const skull = box(0.4, 0.4, 0.4, skin, 0);
   skull.name = "skull";
   head.add(skull);
 
@@ -86,14 +129,19 @@ export function createAvatar(palette: AvatarPalette): THREE.Group {
   const mouth = box(0.12, 0.035, 0.03, MOUTH, -0.1, 0, -0.205);
   mouth.name = "mouth";
   head.add(eyeL, eyeR, pupilL, pupilR, mouth);
+  if (extras.monocle) head.add(createMonocle());
+  const hat = createTopHat();
+  hat.position.y = 0.28;
+  hat.visible = Boolean(extras.hat);
+  head.add(hat);
   g.add(head);
 
   const body = box(0.46, 0.52, 0.26, palette.body, 0.92);
   body.name = "body";
   g.add(body);
 
-  const armL = makeArm(-0.32, palette.body);
-  const armR = makeArm(0.32, palette.body);
+  const armL = makeArm(-0.32, palette.body, skin);
+  const armR = makeArm(0.32, palette.body, skin);
   armL.name = "armL";
   armR.name = "armR";
   const legL = box(0.18, 0.5, 0.18, palette.accent, 0.26, -0.11);
@@ -132,7 +180,7 @@ export function setAvatarFace(group: THREE.Group, mood: FaceMood) {
   const mouth = group.getObjectByName("mouth");
 
   if (eyeL) eyeL.scale.set(1, mood === "laugh" ? 0.45 : 1, 1);
-  if (eyeR) eyeR.scale.set(1, mood === "laugh" ? 0.45 : 1, 1);
+  if (eyeR) eyeR.scale.set(1, mood === "wink" ? 0.12 : mood === "laugh" ? 0.45 : 1, 1);
 
   if (mood === "hearts") {
     tint(pupilL, HEART);
@@ -143,7 +191,7 @@ export function setAvatarFace(group: THREE.Group, mood: FaceMood) {
     tint(pupilL, IRIS);
     tint(pupilR, IRIS);
     if (pupilL) pupilL.scale.set(1, mood === "laugh" ? 0.4 : 1, 1);
-    if (pupilR) pupilR.scale.set(1, mood === "laugh" ? 0.4 : 1, 1);
+    if (pupilR) pupilR.scale.set(1, mood === "wink" ? 0.12 : mood === "laugh" ? 0.4 : 1, 1);
   }
 
   if (mouth) {
@@ -243,42 +291,14 @@ export function swingAvatar(
   }
 }
 
-export const PICKAXE_REST = {
-  x: 0.22,
-  y: -0.24,
-  z: -0.5,
-  rx: -0.55,
-  ry: 1.05,
-  rz: 0.62,
-};
-
-export function createPickaxe(): THREE.Group {
-  const g = new THREE.Group();
-  const handleMat = new THREE.MeshLambertMaterial({ color: 0x6e4324 });
-  const headMat = new THREE.MeshLambertMaterial({ color: 0x9a9690 });
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.5, 0.048), handleMat);
-  handle.position.y = -0.02;
-  const collar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.045, 0.06), handleMat);
-  collar.position.y = 0.2;
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.05), headMat);
-  bar.position.y = 0.24;
-  const pick = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.11), headMat);
-  pick.position.set(0.085, 0.24, -0.03);
-  const poll = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.045, 0.07), headMat);
-  poll.position.set(-0.09, 0.24, 0.02);
-  g.add(handle, collar, bar, pick, poll);
-  g.scale.setScalar(0.62);
-  g.position.set(PICKAXE_REST.x, PICKAXE_REST.y, PICKAXE_REST.z);
-  g.rotation.set(PICKAXE_REST.rx, PICKAXE_REST.ry, PICKAXE_REST.rz);
-  return g;
-}
+export { createPickaxe, disposePickaxe, PICKAXE_REST, PICKAXE_TIP, pickaxeTip } from "./pickaxe";
 
 /** First-person left arm: shoulder stays on the torso, reach matches the pickaxe. */
-export function createLocalArm(): THREE.Group {
+export function createLocalArm(palette: AvatarPalette = CASTAWAY): THREE.Group {
   const g = new THREE.Group();
   g.name = "localArm";
-  const skin = new THREE.MeshLambertMaterial({ color: SKIN });
-  const sleeve = new THREE.MeshLambertMaterial({ color: 0xb85c38 });
+  const skin = new THREE.MeshLambertMaterial({ color: palette.skin });
+  const sleeve = new THREE.MeshLambertMaterial({ color: palette.body });
   const upper = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.22, 0.11), sleeve);
   upper.position.set(0, -0.1, 0);
   const elbow = new THREE.Group();
@@ -294,6 +314,32 @@ export function createLocalArm(): THREE.Group {
   g.rotation.set(0, 0, 0);
   g.visible = false;
   return g;
+}
+
+/** 0 = stand, 0.35 = bend to the hat, 0.7 = hat on, 1 = wink-ready stand. */
+export function poseHatPickup(group: THREE.Group, u: number) {
+  const armR = group.getObjectByName("armR");
+  const armL = group.getObjectByName("armL");
+  const head = group.getObjectByName("head");
+  const body = group.getObjectByName("body");
+  const reach = u < 0.38 ? u / 0.38 : u < 0.62 ? 1 : Math.max(0, 1 - (u - 0.62) / 0.2);
+  const bow = u < 0.5 ? u / 0.5 : Math.max(0, 1 - (u - 0.5) / 0.35);
+  if (body) {
+    body.rotation.x = bow * 0.42;
+    body.position.y = 0.92 - bow * 0.08;
+  }
+  if (head) {
+    head.rotation.x = bow * 0.35;
+    head.rotation.y = u > 0.72 ? (u - 0.72) * 0.8 : 0;
+  }
+  if (armR) {
+    armR.rotation.x = reach * 1.15;
+    armR.rotation.z = -reach * 0.25;
+  }
+  if (armL) {
+    armL.rotation.x = reach * 0.2;
+    armL.rotation.z = 0;
+  }
 }
 
 export function poseLocalArm(arm: THREE.Group, age: number) {

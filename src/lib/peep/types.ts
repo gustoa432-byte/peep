@@ -29,6 +29,12 @@ export type HudState = {
   placeIntent: boolean;
   /** 0–1 while holding the break control; 0 otherwise. */
   breakCharge: number;
+  /** Counts for each palette slot — you place what you dug. */
+  counts: readonly number[];
+  fridayUnlocked: boolean;
+  hatPrompt: boolean;
+  chestOffer: boolean;
+  hatBusy: boolean;
 };
 
 export type NetPos = {
@@ -57,7 +63,12 @@ export type NetEmote = {
   kind: EmoteKind;
 };
 
-export type NetMsg = NetPos | NetBlock | NetHello | NetEmote;
+export type NetLook = {
+  t: "look";
+  hat: boolean;
+};
+
+export type NetMsg = NetPos | NetBlock | NetHello | NetEmote | NetLook;
 
 export type PresencePlayer = {
   playerId: string;

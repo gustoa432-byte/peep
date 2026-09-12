@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { DIRT, GRASS, LEAVES, SAND, STONE, WOOD } from "./constants";
+import { CHEST, DIRT, GOLD, GRASS, LEAVES, SAND, STONE, WOOD } from "./constants";
 
 type RGB = [number, number, number];
 
@@ -15,6 +15,8 @@ const TOP: Record<number, RGB> = {
   [WOOD]: hex(0xd2a05c),
   [SAND]: hex(0xedcf96),
   [LEAVES]: hex(0x4ec94c),
+  [CHEST]: hex(0xb8732a),
+  [GOLD]: hex(0xf0c85a),
 };
 
 /** Grass sides start as soil; the shader paints a green band at the top. */
@@ -25,6 +27,8 @@ const SIDE: Record<number, RGB> = {
   [WOOD]: hex(0x8f5a30),
   [SAND]: hex(0xe0c086),
   [LEAVES]: hex(0x38a83c),
+  [CHEST]: hex(0x8a5a24),
+  [GOLD]: hex(0xd4a43a),
 };
 
 const BOTTOM: Record<number, RGB> = {
@@ -34,6 +38,8 @@ const BOTTOM: Record<number, RGB> = {
   [WOOD]: hex(0xc49254),
   [SAND]: hex(0xd4b478),
   [LEAVES]: hex(0x2f8f34),
+  [CHEST]: hex(0x6a4018),
+  [GOLD]: hex(0xb8862a),
 };
 
 function hash3(x: number, y: number, z: number, salt: number): number {
@@ -86,17 +92,22 @@ function pixelMod(kind: number, x: number, y: number): number {
     return 0.78 + a * 0.16 + stripe;
   }
   if (kind === SAND) return 0.76 + a * 0.32 + (b > 0.88 ? 0.12 : 0);
-  // leaves
+  if (kind === CHEST) {
+    const band = y > 6 && y < 10 ? 0.22 : 0;
+    const frame = x < 2 || x > 13 || y < 2 || y > 13 ? -0.18 : 0;
+    return 0.72 + a * 0.18 + band + frame;
+  }
+  if (kind === GOLD) return 0.88 + a * 0.22 + (b > 0.82 ? 0.14 : 0);
   return b > 0.72 ? 0.45 : 0.78 + a * 0.28;
 }
 
 /** Six 16×16 grayscale tiles in a row. 128 ≈ multiply 1.0. */
 export function createBlockAtlas(): THREE.DataTexture {
   const tw = 16;
-  const types = 6;
+  const types = 8;
   const w = tw * types;
   const data = new Uint8Array(w * tw * 4);
-  const kinds = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES];
+  const kinds = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES, CHEST, GOLD];
   for (let t = 0; t < types; t++) {
     const kind = kinds[t]!;
     for (let y = 0; y < tw; y++) {
@@ -129,9 +140,9 @@ vec2 faceUV = mix(mix(vPeepW.xy, vPeepW.zy, step(pn.z, pn.x)), vPeepW.xz, step(m
 vec2 uv = fract(faceUV);
 float side = 1.0 - smoothstep(0.55, 0.95, abs(vPeepN.y));
 float bot = smoothstep(0.55, 0.95, -vPeepN.y);
-float tile = clamp(kind - 1.0, 0.0, 5.0);
+float tile = clamp(kind - 1.0, 0.0, 7.0);
 tile = mix(tile, 1.0, grass * max(side, bot));
-vec2 aUv = vec2((tile + (uv.x * 15.0 + 0.5) / 16.0) / 6.0, (uv.y * 15.0 + 0.5) / 16.0);
+vec2 aUv = vec2((tile + (uv.x * 15.0 + 0.5) / 16.0) / 8.0, (uv.y * 15.0 + 0.5) / 16.0);
 float m = texture2D(uAtlas, aUv).r * 2.0;
 diffuseColor.rgb *= m;
 float lip = grass * side * step(0.8, uv.y);

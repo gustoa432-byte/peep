@@ -17,18 +17,26 @@ export const STONE = 3;
 export const WOOD = 4;
 export const SAND = 5;
 export const LEAVES = 6;
+export const CHEST = 7;
+export const GOLD = 8;
 
-export const BLOCK_COUNT = 6;
+export const BLOCK_COUNT = 8;
 
-export const BLOCK_NAMES = ["", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves"] as const;
+export const BLOCK_NAMES = ["", "Grass", "Dirt", "Stone", "Wood", "Sand", "Leaves", "Chest", "Gold"] as const;
 
-/**
- * The hotbar IS the inventory: every buildable type, always available.
- * Scarcity does not test the MVP hypothesis (TZ §3.4).
- */
+/** Buildable types. Counts start at zero — you place what you dig. */
 export const BLOCK_PALETTE = [GRASS, DIRT, STONE, WOOD, SAND, LEAVES] as const;
 
-export const HOTBAR_SLOTS = BLOCK_PALETTE.length;
+export const HOTBAR_SLOTS = BLOCK_PALETTE.length + 1;
+
+export const CHEST_X = 24;
+export const CHEST_Y = 1;
+export const CHEST_Z = 24;
+
+/** Chunks kept meshed around the player. Island is the start, ocean goes on. */
+export const VIEW_CHUNKS = 3;
+export const MESH_PER_FRAME = 2;
+export const WORLD_EDIT_LIM = 4095;
 export const MAX_PLAYERS = 2;
 export const REACH = 6;
 export const EYE_HEIGHT = 1.62;
@@ -58,6 +66,8 @@ export const BLOCK_COLORS: Record<number, number> = {
   [WOOD]: 0xb07a45,
   [SAND]: 0xe0c48a,
   [LEAVES]: 0x4db84a,
+  [CHEST]: 0x8a5a24,
+  [GOLD]: 0xe2b84a,
 };
 
 export const SKY_ZENITH = 0x8eb8d4;

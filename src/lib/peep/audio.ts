@@ -1,4 +1,4 @@
-import { DIRT, GRASS, LEAVES, SAND, STONE, WOOD } from "./constants";
+import { CHEST, DIRT, GOLD, GRASS, LEAVES, SAND, STONE, WOOD } from "./constants";
 import type { EmoteKind } from "./types";
 
 /** Material pitch: stone sits low, sand and wood sit high. */
@@ -9,6 +9,8 @@ const MATERIAL_PITCH: Record<number, number> = {
   [WOOD]: 1.26,
   [SAND]: 1.42,
   [LEAVES]: 1.34,
+  [CHEST]: 1.08,
+  [GOLD]: 1.55,
 };
 
 function pitchOf(block: number): number {

@@ -328,7 +328,9 @@ function BreakSpell({
           strokeDashoffset={c * (1 - charge)}
         />
       </svg>
-      <IconPick className="relative size-6" />
+      <span className="relative flex size-8 items-center justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/40">
+        <IconPick className="size-6" />
+      </span>
     </button>
   );
 }
