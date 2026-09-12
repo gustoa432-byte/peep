@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { GameHud } from "@/components/peep/game-hud";
-import { WeaponDebug } from "@/components/peep/weapon-debug";
 import { LookSurface, PlaceHint, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE } from "@/lib/peep/constants";
@@ -157,7 +156,6 @@ export function WorldStage({
       data-orient={orient}
     >
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
-      <WeaponDebug />
       <GameHud
         hud={hud}
         orient={orient}

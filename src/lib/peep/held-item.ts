@@ -21,10 +21,11 @@ function resolveDocument(): ItemDocument | null {
 
 export function createHeldItem(): Group {
   const doc = resolveDocument();
+  const transform = defaultTransform();
+  applyItemTransform(transform);
   if (doc && doc.voxels.length) {
-    applyItemTransform(doc.transform);
     const g = buildItemFromVoxels(doc.voxels);
-    poseHeldGroup(g, doc.transform);
+    poseHeldGroup(g, transform);
     return g;
   }
   return createPickaxe();

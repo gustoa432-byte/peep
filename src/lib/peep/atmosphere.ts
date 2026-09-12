@@ -169,18 +169,9 @@ function createWaterMat(
         depth = max(depth, smoothstep(uInner * 0.9, uOuter * 2.4, dist));
         vec3 col = mix(uShallow, uDeep, clamp(depth, 0.0, 1.0));
 
-        float frame = mod(floor(uTime * 2.0), 3.0);
-        vec3 cycle = mix(
-          mix(vec3(0.03, 0.06, 0.05), vec3(-0.02, 0.04, 0.08), step(0.5, frame)),
-          vec3(0.05, 0.01, -0.03),
-          step(1.5, frame)
-        );
-        col += cycle;
-        float phase = frame * 2.094395;
-
-        float w1 = sin(vWorld.x * 0.31 + uTime * 0.42 + phase);
-        float w2 = sin(vWorld.z * 0.27 - uTime * 0.33 + phase);
-        float w3 = sin((vWorld.x + vWorld.z) * 0.19 + uTime * 0.18 + phase);
+        float w1 = sin(vWorld.x * 0.31 + uTime * 0.42);
+        float w2 = sin(vWorld.z * 0.27 - uTime * 0.33);
+        float w3 = sin((vWorld.x + vWorld.z) * 0.19 + uTime * 0.18);
         float waves = (w1 + w2) * 0.5 + w3 * 0.25;
         col += uSunColor * (0.05 + waves * 0.035);
 

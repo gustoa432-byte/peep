@@ -56,6 +56,13 @@ export const PLACE_DOUBLE_MS = 280;
 export const PLACE_HOLD_CONFIRM_MS = 70;
 export const PLACE_HOLD_S = 0.45;
 export const BREAK_HOLD_S = 0.3;
+/** After a place/break, wait a random beat before the next one can start. */
+export const EDIT_REPEAT_DELAY_MIN_S = 0.2;
+export const EDIT_REPEAT_DELAY_MAX_S = 0.3;
+
+export function nextEditDelay(): number {
+  return EDIT_REPEAT_DELAY_MIN_S + Math.random() * (EDIT_REPEAT_DELAY_MAX_S - EDIT_REPEAT_DELAY_MIN_S);
+}
 
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 

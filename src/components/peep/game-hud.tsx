@@ -279,7 +279,7 @@ export function GameHud({
           <div className="w-[min(380px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
             <p className="font-mono text-lg uppercase tracking-wide">сундук</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Внутри — золотой блок. Можно позвать Пятницу.
+              Внутри — 16 слитков золота. Можно позвать Пятницу.
             </p>
             <div className="mt-5 flex flex-col gap-2">
               {hud.isCreator ? (

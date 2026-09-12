@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ItemEditor } from "@/lib/peep/item-editor";
 import { FORGE_TEMPLATES, templateById } from "@/lib/peep/item-templates";
+import { FORGE_PALETTE_MAX, readForgePalette, rememberForgeColor } from "@/lib/peep/item-palette";
 import {
   DEFAULT_PAINT,
-  FORGE_SWATCHES,
   defaultTransform,
+  isGoldHex,
+  normalizeHex,
   parseItemDocument,
   type ItemTransform,
 } from "@/lib/peep/item-voxels";
@@ -67,6 +69,7 @@ export function ItemForge() {
   const [count, setCount] = useState(0);
   const [transform, setTransform] = useState<ItemTransform>(defaultTransform);
   const [template, setTemplate] = useState("");
+  const [palette, setPalette] = useState<string[]>(() => readForgePalette());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -99,9 +102,11 @@ export function ItemForge() {
   }, []);
 
   const pickColor = (next: string) => {
-    setColor(next);
+    const hex = normalizeHex(next) ?? DEFAULT_PAINT;
+    setColor(hex);
+    setPalette(rememberForgeColor(hex));
     setErase(false);
-    editorRef.current?.setColor(next);
+    editorRef.current?.setColor(hex);
     editorRef.current?.setErase(false);
   };
 
@@ -181,6 +186,8 @@ export function ItemForge() {
       return;
     }
     editor.load(voxels);
+    const paint = normalizeHex(voxels[0]?.color) ?? DEFAULT_PAINT;
+    pickColor(paint);
     setTemplate("");
   };
 
@@ -318,26 +325,8 @@ export function ItemForge() {
                   {count} кл.
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {FORGE_SWATCHES.map((hex, i) => (
-                  <button
-                    key={hex}
-                    type="button"
-                    aria-label={hex}
-                    aria-pressed={color === hex && !erase}
-                    onClick={() => pickColor(hex)}
-                    className={cn(
-                      "size-11 rounded-pixel border-2",
-                      color === hex && !erase ? "border-fg-on-ink" : "border-fg-on-ink/20",
-                    )}
-                  >
-                    <span
-                      className="block size-full rounded-pixel border border-fg-on-ink/35"
-                      style={{ background: `var(--color-swatch-${i})` }}
-                    />
-                  </button>
-                ))}
-                <label className="flex min-h-11 items-center gap-2 border-2 border-fg-on-ink/20 px-2">
+              <div className="flex items-start gap-2">
+                <label className="flex min-h-11 shrink-0 items-center gap-2 border-2 border-fg-on-ink/20 px-2">
                   <input
                     type="color"
                     value={color}
@@ -349,6 +338,38 @@ export function ItemForge() {
                     {color}
                   </span>
                 </label>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 font-mono text-xs uppercase tracking-widest text-muted-on-ink">
+                    палитра · {palette.length}/{FORGE_PALETTE_MAX}
+                  </p>
+                  <div className="flex max-h-28 flex-wrap content-start gap-1.5 overflow-y-auto">
+                    {palette.map((hex) => (
+                      <button
+                        key={hex}
+                        type="button"
+                        aria-label={hex}
+                        aria-pressed={color === hex && !erase}
+                        onClick={() => pickColor(hex)}
+                        className={cn(
+                          "size-8 rounded-pixel border-2 sm:size-9",
+                          color === hex && !erase ? "border-fg-on-ink" : "border-fg-on-ink/20",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "peep-swatch-chip block size-full rounded-pixel border border-fg-on-ink/35",
+                            isGoldHex(hex) && "peep-gold-swatch",
+                          )}
+                          style={
+                            isGoldHex(hex)
+                              ? undefined
+                              : ({ "--swatch": hex } as CSSProperties)
+                          }
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </>
           ) : (
