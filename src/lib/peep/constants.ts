@@ -23,8 +23,10 @@ export const GOLD = 8;
 export const BARRIER = 9;
 /** Test neon accent block (cyan top / magenta sides). */
 export const NEON = 10;
+/** Dynamite — placeable charge item (hard cap + recharge), not dug from the world. */
+export const DYNAMITE = 11;
 
-export const BLOCK_COUNT = 10;
+export const BLOCK_COUNT = 11;
 
 export const BLOCK_NAMES = [
   "",
@@ -38,12 +40,69 @@ export const BLOCK_NAMES = [
   "Gold",
   "Пусто",
   "Neon",
+  "Динамит",
 ] as const;
 
 /** Buildable types. Counts start at zero — you place what you dig. */
-export const BLOCK_PALETTE = [BARRIER, GRASS, DIRT, STONE, WOOD, SAND, LEAVES, NEON] as const;
+export const BLOCK_PALETTE = [BARRIER, GRASS, DIRT, STONE, WOOD, SAND, LEAVES, NEON, DYNAMITE] as const;
 
-export const HOTBAR_SLOTS = BLOCK_PALETTE.length + 1;
+/** Active hotbar slots (not counting the inventory button). */
+export const HOTBAR_SLOTS = 5;
+
+/** Host (Pip) starter belt — TNT first. */
+export const DEFAULT_HOTBAR = [DYNAMITE, GRASS, DIRT, STONE, WOOD] as const;
+/** Friday starter belt — TNT first. */
+export const FRIDAY_HOTBAR = [DYNAMITE, GRASS, DIRT, STONE, WOOD] as const;
+
+/** Max owned worlds per player account. */
+export const MAX_WORLDS_PER_ACCOUNT = 3;
+
+/** Dynamite inventory hard cap + recharge. */
+export const DYNAMITE_MAX_CHARGES = 10;
+/** One charge every 30s when below cap. */
+export const DYNAMITE_RECHARGE_MS = 30 * 1000;
+/** Fuse after place — half of the previous 3s. */
+export const DYNAMITE_FUSE_S = 1.5;
+/** Destroyable blocks farmed per blast (nearest first). */
+export const DYNAMITE_BLAST_BLOCKS = 100;
+export const DYNAMITE_BLAST_RADIUS = 8;
+export const DYNAMITE_SHAKE_RANGE = 10;
+/** Rocket-jump / knockback scale vs baseline. */
+export const DYNAMITE_KNOCKBACK_MUL = 1.5;
+
+/** Hidden underwater laps → look up → TNT rain (troll dynamite farm). */
+export const TROLL_LAPS = 3;
+export const TROLL_ANGLE_RAD = TROLL_LAPS * Math.PI * 2;
+/** Look-up trigger: camera aimed at sky (world +Y). */
+export const TROLL_LOOK_UP_DOT = 0.42;
+export const TROLL_DROP_COUNT = 3;
+export const TROLL_DROP_GAP_S = 0.3;
+export const TROLL_SPAWN_HEIGHT = 15;
+/** Bonus charges when the underwater quest completes. */
+export const TROLL_QUEST_REWARD = 6;
+/** Panic timer while swimming laps underwater. */
+export const TROLL_TIMER_S = 90;
+/** Quiet sector feedback every quarter-lap. */
+export const TROLL_SECTOR_RAD = Math.PI / 2;
+
+/** Fake boot gag over the world canvas. */
+export const BOOT_LOADER_S = 5;
+export const BOOT_TIP_S = 2;
+export const BOOT_TIPS = [
+  "не копай под себя",
+  "не выполняй квесты под водой",
+  "не смотри на пятницу",
+] as const;
+export const BOOT_FOOTER = "зы я сделал всьо чтобы эта игра лагала не благадарите";
+
+/** Host cinematic: Friday drops from the sky, then TNT “punishment”. */
+export const FRIDAY_FALL_HEIGHT = 18;
+export const FRIDAY_HOPE_S = 2;
+export const FRIDAY_TNT_COUNT = 3;
+export const FRIDAY_TNT_GAP_S = 0.5;
+export const FRIDAY_TNT_HEIGHT = 12;
+/** Optional vanity island id: latin letters, digits, _- ; 3–24 chars. */
+export const ISLAND_SLUG_RE = /^[a-z][a-z0-9_-]{2,23}$/;
 
 /** Empty for greedy meshing / AO (barrier is invisible but still solid). */
 export function isMeshEmpty(block: number): boolean {
@@ -58,7 +117,10 @@ export const CHEST_Z = 24;
 export const VIEW_CHUNKS = 3;
 export const MESH_PER_FRAME = 2;
 export const WORLD_EDIT_LIM = 4095;
-export const MAX_PLAYERS = 2;
+/** Host + up to two Fridays. */
+export const MAX_PLAYERS = 3;
+/** Concurrent Friday guest claims per island. */
+export const MAX_GUESTS = 2;
 export const REACH = 6;
 export const EYE_HEIGHT = 1.62;
 export const CROUCH_EYE_HEIGHT = 1.15;
@@ -69,22 +131,26 @@ export const WALK_SPEED = 4.6;
 export const CROUCH_SPEED_MUL = 0.42;
 export const JUMP_SPEED = 8.2;
 export const GRAVITY = 23;
-/** Arcade bhop: soft air steer, bounce mul, ice-like ground slide. */
+/**
+ * Bunnyhop only from the 2nd consecutive takeoff.
+ * First jump = hard arcade hop (no slide carry).
+ */
 export const BHOP_MAX_MUL = 2.2;
-export const BHOP_BOUNCE_MUL = 1.1;
-/** How fast air velocity turns toward wish (higher = snappier). */
+export const BHOP_BOUNCE_MUL = 1.12;
+/** How fast air velocity turns toward wish while bhops are active. */
 export const BHOP_AIR_TURN = 7.5;
 /** Drag when airborne with no move keys. */
 export const BHOP_AIR_DRAG = 0.9;
-/** Ground slide friction when not chaining jumps. */
-export const GROUND_FRICTION = 5.5;
-/** How quickly walk wish catches the ground velocity. */
-export const GROUND_ACCEL = 14;
+/** Hard ground stop when not chaining bhops (higher = snappier halt). */
+export const GROUND_FRICTION = 28;
+/** Soft bleed only while carrying bhop speed on a brief ground touch. */
+export const BHOP_GROUND_FRICTION = 4.2;
 export const BHOP_AIR_CROUCH_GRAVITY = 0.82;
 export const PRESENCE_TTL_SECONDS = 12;
 /** Edits per window, stored in Postgres so a cold start cannot reset the cap. */
 export const RATE_WINDOW_SECONDS = 8;
-export const RATE_MAX_EDITS = 50;
+/** Raised so a dynamite blast (~100 cells) can sync in one window. */
+export const RATE_MAX_EDITS = 120;
 
 /** Place: a lone tap never builds. Sharp double-tap, then hold the second tap. */
 export const PLACE_TAP_MAX_MS = 260;
@@ -94,6 +160,8 @@ export const PLACE_HOLD_S = 0.45;
 export const BREAK_HOLD_S = 0.3;
 /** Opening the buried chest is a long hold — not a normal dig. */
 export const CHEST_CRAFT_S = 30;
+/** Show chest HP/craft HUD only when the player is this close (blocks). */
+export const CHEST_BAR_RANGE = 3;
 /** After a place/break, wait a random beat before the next one can start. */
 export const EDIT_REPEAT_DELAY_MIN_S = 0.2;
 export const EDIT_REPEAT_DELAY_MAX_S = 0.3;
@@ -104,16 +172,18 @@ export function nextEditDelay(): number {
 
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 
+/** Matte palette — matches hotbar swatches; vertex AO + Lambert do the shading. */
 export const BLOCK_COLORS: Record<number, number> = {
-  [GRASS]: 0xf0f2f5,
-  [DIRT]: 0xe8eaee,
-  [STONE]: 0xdde0e6,
-  [WOOD]: 0xf4f5f7,
-  [SAND]: 0xeef0f3,
-  [LEAVES]: 0xe4e7ec,
-  [CHEST]: 0xc8ccd4,
-  [GOLD]: 0xfff6d6,
+  [GRASS]: 0x68a85a,
+  [DIRT]: 0x8a5a38,
+  [STONE]: 0x7a7670,
+  [WOOD]: 0xb07a45,
+  [SAND]: 0xe0c48a,
+  [LEAVES]: 0x4db84a,
+  [CHEST]: 0x8a5a24,
+  [GOLD]: 0xe2b84a,
   [NEON]: 0x00e5ff,
+  [DYNAMITE]: 0xd43c2c,
 };
 
 /** Voxel Minimalist sky / fog — dark graphite-indigo, mobile-cheap. */
@@ -130,3 +200,11 @@ export const UNDERWATER_FOG = 0x0e1a24;
 /** Cool fill + warm key for soft Lambert shading. */
 export const AMBIENT_COLOR = 0x8aa0c8;
 export const SUN_LIGHT_COLOR = 0xfff8f0;
+/** Ortho shadow frustum half-extent around the player (world units). */
+export const SHADOW_EXTENT = 72;
+export const SHADOW_MAP_SIZE = 2048;
+/** Warm belt lantern — fills night without bleaching nearby voxels. */
+export const LANTERN_COLOR = 0xffaa44;
+export const LANTERN_INTENSITY = 1.55;
+export const LANTERN_DISTANCE = 9;
+export const LANTERN_DECAY = 2;
