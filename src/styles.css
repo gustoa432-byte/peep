@@ -879,3 +879,9 @@
   }
 }
 
+/* Free-look / Pointer Lock: hide system cursor over the game canvas. */
+.peep-aim-cursor,
+canvas.peep-aim-cursor {
+  cursor: none !important;
+}
+

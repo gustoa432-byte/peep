@@ -317,9 +317,9 @@ export function GameHud({
           aria-hidden
         >
           <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/90">
-            кликните по экрану для прицела
+            двигайте мышью — камера
             <span className="mt-1 block text-[10px] tracking-wider text-muted-on-ink">
-              Esc — курсор · клик — Pointer Lock
+              ЛКМ ломать · ПКМ ставить · клик — Pointer Lock если доступен
             </span>
           </span>
         </div>

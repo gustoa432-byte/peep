@@ -102,7 +102,7 @@ import { addBlock, addDynamite, countOf, dynamiteCharges, dynamiteRechargeProgre
 import { gameViewSize } from "./fake-landscape";
 import { hapticBoom, hapticJump } from "./haptics";
 import { getTelegramSaveId } from "./player-id";
-import { getTelegramDisplayName } from "./telegram";
+import { getTelegramDisplayName, isTelegramDesktopPlatform, isTelegramMobilePlatform } from "./telegram";
 import type { WorldSavePayload } from "./world-serialize";
 import { voxelRaycast, type VoxelHit } from "./raycast";
 import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./textures";
@@ -733,6 +733,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.audio.unlock();
     this.audio.startAmbient();
     this.tryLock();
+    this.applyAimCursor();
     this.applyLocalFpsVisibility(true);
     this.hudDirty = true;
   }
@@ -1363,8 +1364,32 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     return document.pointerLockElement === this.opts.canvas;
   }
 
+  /** Fine pointer desktop, or Telegram Desktop clients (tdesktop/macos/windows/linux). */
   private wantsDesktopLock(): boolean {
+    if (isTelegramMobilePlatform()) return false;
+    if (isTelegramDesktopPlatform()) return true;
     return window.matchMedia("(pointer: fine)").matches;
+  }
+
+  /**
+   * Mouse free-look without Pointer Lock (TG Desktop WebView blocks PL).
+   * Drag-to-look must NEVER gate mouse — only touch pads use hold-drag.
+   */
+  private wantsFreeMouseLook(): boolean {
+    if (!this.playing || this.inputBlocked()) return false;
+    if (isTelegramMobilePlatform()) return false;
+    return this.wantsDesktopLock();
+  }
+
+  private applyAimCursor() {
+    const c = this.opts.canvas;
+    if (this.isLocked() || (this.wantsFreeMouseLook() && !this.inputBlocked())) {
+      c.style.cursor = "none";
+      c.classList.add("peep-aim-cursor");
+    } else {
+      c.style.cursor = "";
+      c.classList.remove("peep-aim-cursor");
+    }
   }
 
   private onLock() {
@@ -1372,9 +1397,9 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     if (this.pointerLocked) {
       this.pointerLockDenied = false;
       this.dragging = false;
-      this.opts.canvas.style.cursor = "none";
-    } else {
-      this.opts.canvas.style.cursor = "default";
+    }
+    this.applyAimCursor();
+    if (!this.pointerLocked) {
       this.endPlace();
       this.endBreak();
     }
@@ -1382,10 +1407,11 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
   }
 
   private onLockError() {
-    // PL failed for this gesture — hold-to-drag look stays active; retry PL next click.
+    // PL failed — keep free mouse look; never fall back to hold-LMB drag for mouse.
     this.pointerLocked = false;
     this.pointerLockDenied = true;
-    this.opts.canvas.style.cursor = "default";
+    this.dragging = false;
+    this.applyAimCursor();
     this.hudDirty = true;
   }
 
@@ -1394,34 +1420,34 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     if (e.button !== 0) return;
     if (!this.wantsDesktopLock()) return;
     if (this.isLocked()) return;
+    // TG Desktop often rejects PL — still enable free-look cursor immediately.
+    this.applyAimCursor();
     e.preventDefault();
-    // Sync call inside the click gesture — required by browsers / TG WebView2.
     this.tryLock();
   }
 
   private onMouseMove(e: MouseEvent) {
     if (!this.playing || this.inputBlocked()) return;
-    if (document.pointerLockElement !== this.opts.canvas) return;
-    // Unbounded look — only movement deltas while Pointer Lock is active.
-    this.lookDelta(e.movementX, e.movementY);
+    if (this.isLocked()) {
+      this.lookDelta(e.movementX, e.movementY);
+      return;
+    }
+    // Desktop / tdesktop: always look on mouse move — no button held.
+    if (!this.wantsFreeMouseLook()) return;
+    const dx = e.movementX;
+    const dy = e.movementY;
+    if (dx === 0 && dy === 0) return;
+    this.lookDelta(dx, dy);
   }
 
   /**
-   * Roblox-style fallback when Pointer Lock is unavailable:
-   * look only while a mouse button is held (dragging), using movementX/Y.
+   * Pointer-move on canvas: ignore mouse (handled by onMouseMove).
+   * Touch look lives on HUD pads — never canvas drag-to-look for mouse.
    */
   private onPointerMove(e: PointerEvent) {
-    if (!this.playing || this.inputBlocked()) return;
     if (e.pointerType === "touch") return;
-    if (this.isLocked()) return;
-    if (!this.dragging) return;
-    const dx = e.movementX;
-    const dy = e.movementY;
-    this.lastPtrX = e.clientX;
-    this.lastPtrY = e.clientY;
-    if (dx === 0 && dy === 0) return;
-    this.ptrMoved = true;
-    this.lookDelta(dx, dy);
+    if (e.pointerType === "mouse" || e.pointerType === "") return;
+    // Pen / other: ignore for look.
   }
 
   private lookDelta(dx: number, dy: number) {
@@ -1445,15 +1471,10 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.tapSlop = 6;
 
     if (!this.isLocked() && this.wantsDesktopLock()) {
-      // Synchronous request inside the mousedown gesture (PL primary path).
+      // Sync PL attempt inside the gesture; free-look works even if PL is denied.
       this.tryLock();
-      // Hold-to-drag look only until PL engages (or if PL denied).
-      this.dragging = true;
-      try {
-        this.opts.canvas.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
+      this.applyAimCursor();
+      // Do NOT set dragging — hold-to-look is touch-only.
       if (codeFromMouseButton(e.button) === this.keybinds.break) this.beginBreak();
       if (codeFromMouseButton(e.button) === this.keybinds.place) this.beginPlace();
       return;
@@ -3626,7 +3647,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       peerCount: this.peerCount,
       peerConnected: this.peerConnected || this.remotes.size > 0,
       playing: this.playing,
-      locked: this.isLocked(),
+      // Free mouse look counts as "aimed" so HUD doesn't nag for Pointer Lock.
+      locked: this.isLocked() || (this.playing && this.wantsFreeMouseLook()),
       lockDenied: this.pointerLockDenied && !this.isLocked(),
       worldId: this.opts.worldId,
       isCreator: this.opts.isCreator,

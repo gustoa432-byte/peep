@@ -153,6 +153,16 @@ export default defineConfig(({ command, isPreview }) => ({
     port: 4173,
   },
   resolve: { tsconfigPaths: true },
+  build: {
+    // Always content-hash client bundles so TMA cannot keep a stale JS forever.
+    rollupOptions: {
+      output: {
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: "assets/[name]-[hash][extname]",
+      },
+    },
+  },
   ssr: {
     external: ["better-sqlite3", "bindings", "file-uri-to-path", "ws"],
     noExternal: [],
@@ -171,6 +181,16 @@ export default defineConfig(({ command, isPreview }) => ({
             // Render sets RENDER=true and needs a long-lived Node process so
             // two players can share signaling + worlds on one instance.
             preset: nitroDeployPreset(),
+            routeRules: {
+              // TMA WebViews pin HTML/JS hard — never let the document shell stick.
+              "/**": {
+                headers: {
+                  "cache-control": "no-cache, no-store, must-revalidate",
+                  pragma: "no-cache",
+                  expires: "0",
+                },
+              },
+            },
           }),
         ]
       : []),

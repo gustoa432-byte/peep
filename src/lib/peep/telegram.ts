@@ -118,7 +118,7 @@ export function isTelegramMobilePlatform(): boolean {
   );
 }
 
-/** @deprecated Soft-look path removed — always prefer Pointer Lock. */
+/** @deprecated Hold-LMB drag look removed for mouse; touch pads only. */
 export function preferDragLookCamera(): boolean {
   return false;
 }

@@ -13,9 +13,13 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#1A1612" },
       { name: "apple-mobile-web-app-title", content: APP_NAME },
       { name: "application-name", content: APP_NAME },
+      // TMA WebView aggressively caches HTML — force revalidate document shell.
+      { httpEquiv: "Cache-Control", content: "no-cache, no-store, must-revalidate" },
+      { httpEquiv: "Pragma", content: "no-cache" },
+      { httpEquiv: "Expires", content: "0" },
       {
         name: "description",
-        content: "Peepland — альтернативная история великой стройки. Один мир, два человека, одна ссылка.",
+        content: "Peepland — мгновенные воксельные сессии в Telegram Mini Apps.",
       },
     ],
     links: [
