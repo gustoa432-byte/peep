@@ -12,6 +12,7 @@
   "scripts": {
     "dev": "node scripts/with-app-env.mjs vite dev",
     "build": "node scripts/with-app-env.mjs vite build && npm run db:migrate",
+    "build:vps": "NITRO_PRESET=node-server node scripts/with-app-env.mjs vite build && npm run db:migrate",
     "start": "node scripts/start-server.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "build:dev": "node scripts/with-app-env.mjs vite build --mode development",

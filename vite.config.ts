@@ -139,8 +139,11 @@ function nitroDeployPreset(): "render-com" | "node-server" | "vercel" {
   const explicit = process.env.NITRO_PRESET?.trim();
   if (explicit === "render-com" || explicit === "node-server") return explicit;
   if (explicit === "node") return "node-server";
+  if (explicit === "vercel") return "vercel";
   if (process.env.RENDER) return "render-com";
-  return "vercel";
+  // VPS/PM2 loads `.output/server` — never silently build the Vercel preset
+  // (that writes `.vercel/output` and leaves a stale `.output` serving forever).
+  return "node-server";
 }
 
 export default defineConfig(({ command, isPreview }) => ({

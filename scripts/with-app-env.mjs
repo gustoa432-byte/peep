@@ -111,6 +111,11 @@ function main(argv) {
     process.exit(2);
   }
   const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
+  // VPS/PM2 serves `.output/server`. Without an explicit preset Vite/Nitro
+  // historically defaulted to `vercel` and wrote a dead `.vercel/output`.
+  if (!env.NITRO_PRESET?.trim()) {
+    env.NITRO_PRESET = "node-server";
+  }
   // Windows cannot spawn a bare `vite` from PATH without a shell (no PATHEXT
   // resolution in spawn()). Linux sandbox is unaffected: shell stays false.
   const child = spawn(command, args, {

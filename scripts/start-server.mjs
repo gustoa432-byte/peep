@@ -34,10 +34,39 @@ if (migrated.status !== 0) process.exit(migrated.status ?? 1);
 
 const entry = join(root, ".output", "server", "index.mjs");
 if (!existsSync(entry)) {
-  console.error(
-    "[peep] Missing .output/server/index.mjs. Build first (npm run build).",
+  const vercelEntry = join(
+    root,
+    ".vercel",
+    "output",
+    "functions",
+    "__server.func",
+    "index.mjs",
   );
+  if (existsSync(vercelEntry)) {
+    console.error(
+      "[peep] FATAL: found .vercel/output but missing .output/server.",
+    );
+    console.error(
+      "[peep] Build used the Vercel Nitro preset; PM2 serves .output only.",
+    );
+    console.error(
+      "[peep] Rebuild with NITRO_PRESET=node-server (see npm run build:vps).",
+    );
+  } else {
+    console.error(
+      "[peep] Missing .output/server/index.mjs. Build first (npm run build).",
+    );
+  }
   process.exit(1);
+}
+
+{
+  // Loud proof of which bundle is live.
+  const { statSync } = await import("node:fs");
+  const st = statSync(entry);
+  console.log(
+    `[peep] serving ${entry} mtime=${st.mtime.toISOString()}`,
+  );
 }
 
 console.log(`[peep] SQLite → ${process.env.SQLITE_PATH}`);
