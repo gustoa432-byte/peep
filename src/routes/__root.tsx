@@ -43,22 +43,6 @@ export const Route = createRootRoute({
         <HeadContent />
       </head>
       <body>
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            zIndex: 99999,
-            background: "red",
-            color: "white",
-            fontSize: "40px",
-            padding: "20px",
-            fontFamily: "monospace",
-            fontWeight: 700,
-          }}
-        >
-          DEPLOY_TEST_777
-        </div>
         <AuthProvider>
           <Outlet />
         </AuthProvider>

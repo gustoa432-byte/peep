@@ -13,8 +13,8 @@ export type Atmosphere = {
   fogFar: { value: number };
 };
 
-/** Afternoon sun — long readable shadows (not zenith). */
-const SUN_ELEVATION_DEG = 48;
+/** Midday sun — piercing blue, long readable shadows (TZ / GDD 2.0). */
+const SUN_ELEVATION_DEG = 58;
 const SUN_AZIMUTH_DEG = -35;
 
 function sunDirectionFromAngles(elevationDeg: number, azimuthDeg: number): THREE.Vector3 {

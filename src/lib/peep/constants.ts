@@ -165,7 +165,7 @@ export const PLACE_DOUBLE_MS = 280;
 export const PLACE_HOLD_CONFIRM_MS = 70;
 /** One hit / one anim to place or break a block. */
 export const PLACE_HOLD_S = 0.15;
-export const BREAK_HOLD_S = 0.15;
+export const BREAK_HOLD_S = 0.1;
 /** Opening the buried chest is a long hold — not a normal dig. */
 export const CHEST_CRAFT_S = 30;
 /** Show chest HP/craft HUD only when the player is this close (blocks). */
