@@ -1,34 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { BootLoader } from "@/components/peep/boot-loader";
 import { GameHud } from "@/components/peep/game-hud";
+import { PickaxeGripPanel } from "@/components/peep/pickaxe-grip-panel";
 import { LookSurface, PlaceHint, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
-import { BLOCK_PALETTE } from "@/lib/peep/constants";
+import { BLOCK_PALETTE, DEFAULT_HOTBAR } from "@/lib/peep/constants";
 import {
   canFullscreen,
   FS_EVENTS,
   isFullscreen,
   toggleFullscreen,
 } from "@/lib/peep/fullscreen";
-import { PeepGame } from "@/lib/peep/game";
+import { PeepGame, type ToolPoseExport } from "@/lib/peep/game";
 import { startLazySave } from "@/lib/peep/lazy-save";
 import { getTelegramSaveId } from "@/lib/peep/player-id";
-import { markSessionDone, placedBlockCount, recordPlacedBlock } from "@/lib/peep/remember-world";
+import { markSessionDone, minedBlockCount, placedBlockCount, recordMinedBlock, recordPlacedBlock } from "@/lib/peep/remember-world";
+import { lockOrient, unlockOrient, usePhoneUi } from "@/lib/peep/settings";
 import {
-  lockOrient,
-  readOrient,
-  unlockOrient,
-  useMatchMedia,
-  usePhoneUi,
-} from "@/lib/peep/settings";
-import { initTelegramWebApp } from "@/lib/peep/telegram";
+  fridayInviteLink,
+  initTelegramWebApp,
+  shareFridayInvite,
+} from "@/lib/peep/telegram";
 import type { Story } from "@/lib/peep/progress";
 import { leaveWorld, trackEvent } from "@/lib/peep/world.functions";
 import type { BlockEdit, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
 
 const EMPTY_HUD: HudState = {
-  palette: BLOCK_PALETTE,
+  palette: [...DEFAULT_HOTBAR],
   selected: 1,
   peerCount: 1,
   peerConnected: false,
@@ -40,7 +40,12 @@ const EMPTY_HUD: HudState = {
   placeIntent: false,
   breakCharge: 0,
   chestBar: null,
-  counts: [0, 0, 0, 0, 0, 0, 0, 0],
+  counts: [0, 0, 0, 0, 0],
+  catalog: [...BLOCK_PALETTE],
+  catalogCounts: BLOCK_PALETTE.map(() => 0),
+  invBadge: 0,
+  dynamiteCd: 0,
+  emoteCd: 0,
   fridayUnlocked: false,
   hatPrompt: false,
   chestOffer: false,
@@ -48,6 +53,12 @@ const EMPTY_HUD: HudState = {
   guestBuildAllowed: false,
   islandLocked: false,
   fridayOnline: false,
+  notice: null,
+  lookHint: null,
+  censorFlash: 0,
+  cinematicActive: false,
+  lockDenied: false,
+  trollTracker: null,
 };
 
 export function WorldStage({
@@ -81,24 +92,46 @@ export function WorldStage({
   const [lost, setLost] = useState(false);
   const [kicked, setKicked] = useState(false);
   const [placed, setPlaced] = useState(placedBlockCount);
-  const [storedOrient] = useState(readOrient);
-  const [skipRotate, setSkipRotate] = useState(false);
+  const [mined, setMined] = useState(minedBlockCount);
   const [fullscreen, setFullscreen] = useState(false);
   const [fsHint, setFsHint] = useState<string | null>(null);
   const [saveHint, setSaveHint] = useState<string | null>(null);
+  const [bootLoading, setBootLoading] = useState(true);
+  const [bootProgress, setBootProgress] = useState(0.55);
   const phone = usePhoneUi();
-  const coarse = useMatchMedia("(pointer: coarse)");
-  const viewLand = useMatchMedia("(orientation: landscape)");
-  const orient = phone ? storedOrient : "portrait";
-  const inviteUrl = typeof window === "undefined" ? "" : `${window.location.origin}/world/${worldId}`;
-  const needRotate =
-    phone &&
-    !skipRotate &&
-    ((orient === "landscape" && !viewLand) || (orient === "portrait" && viewLand));
+  const [hudOverlay, setHudOverlay] = useState(false);
+  const [gripOpen, setGripOpen] = useState(false);
+  const [toolPose, setToolPose] = useState<ToolPoseExport | null>(null);
+  // Game is landscape-only on phones; desktop HUD stays "portrait" layout labels.
+  const orient = phone ? "landscape" : "portrait";
+  const inviteUrl =
+    typeof window === "undefined" ? "" : fridayInviteLink(worldId) ?? "";
 
   useEffect(() => {
     initTelegramWebApp();
   }, []);
+
+  useEffect(() => {
+    const open = hudOverlay || gripOpen;
+    if (!open) return;
+    gameRef.current?.setMoveAxis(0, 0);
+    gameRef.current?.endBreak();
+    gameRef.current?.endPlace();
+    try {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } catch {
+      /* ignore */
+    }
+  }, [hudOverlay, gripOpen]);
+
+  useEffect(() => {
+    if (!phone) {
+      unlockOrient();
+      return;
+    }
+    void lockOrient("landscape");
+    return () => unlockOrient();
+  }, [phone]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -119,7 +152,9 @@ export function WorldStage({
       onLost: () => setLost(true),
       onKicked: () => setKicked(true),
       onPlaced: () => setPlaced(recordPlacedBlock()),
+      onBroken: () => setMined(recordMinedBlock()),
       onWorldDirty: () => lazyRef.current?.markDirty(),
+      onBootProgress: (p) => setBootProgress(p),
     });
     gameRef.current = game;
 
@@ -170,15 +205,6 @@ export function WorldStage({
   };
 
   useEffect(() => {
-    if (!phone) {
-      unlockOrient();
-      return;
-    }
-    void lockOrient(storedOrient);
-    return () => unlockOrient();
-  }, [phone, storedOrient]);
-
-  useEffect(() => {
     const sync = () => setFullscreen(isFullscreen(stageRef.current));
     sync();
     for (const ev of FS_EVENTS) document.addEventListener(ev, sync);
@@ -187,16 +213,8 @@ export function WorldStage({
     };
   }, []);
 
-  const invite = async () => {
-    const bot = (import.meta.env.VITE_TG_BOT_USERNAME as string | undefined)?.trim();
-    const { fridayInviteLink } = await import("@/lib/peep/telegram");
-    const tgLink = bot ? fridayInviteLink(bot) : null;
-    const url = tgLink ?? `${window.location.origin}/world/${worldId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      window.prompt("Ссылка на мир", url);
-    }
+  const invite = () => {
+    shareFridayInvite(worldId);
     void trackEvent({ data: { name: "invite", worldId, playerId } });
   };
 
@@ -214,39 +232,72 @@ export function WorldStage({
       window.setTimeout(() => setFsHint(null), 3200);
       return;
     }
-    if (result === "on" && phone) void lockOrient(storedOrient);
+    if (result === "on" && phone) void lockOrient("landscape");
   };
 
   return (
     <div
       ref={stageRef}
-      className="fixed inset-0 overflow-hidden bg-bg-deep font-mono touch-none"
+      className="peep-stage fixed inset-0 overflow-hidden bg-bg-deep font-mono touch-none select-none"
       data-orient={orient}
     >
+      <div id="game-wrapper">
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
-      <GameHud
-        hud={hud}
-        orient={orient}
-        phone={phone}
-        inviteUrl={inviteUrl}
-        onSelect={(i) => gameRef.current?.setSelected(i)}
-        onInvite={() => void invite()}
-        onPickupHat={() => gameRef.current?.pickupHat()}
-        onDismissChest={() => gameRef.current?.dismissChest()}
-        onEmote={(kind) => gameRef.current?.playEmote(kind)}
-        onReset={() => gameRef.current?.resetIsland() ?? Promise.resolve(false)}
-        onSaveWorld={isCreator ? () => void onSaveWorld() : undefined}
-        saveHint={saveHint}
-        onKickFriday={() => void gameRef.current?.kickFriday()}
-        onToggleLock={() =>
-          void gameRef.current?.setIslandLocked(!hud.islandLocked)
-        }
-        onToggleBuild={() =>
-          void gameRef.current?.setGuestBuildAllowed(!hud.guestBuildAllowed)
-        }
-        fullscreen={fullscreen}
-        onFullscreen={() => void onFullscreen()}
-      />
+      {/* Must stay pointer-events-none or it shields the canvas (TG Desktop look dies). */}
+      <div id="ui-container" className="pointer-events-none absolute inset-0 z-10">
+      {bootLoading ? (
+        <BootLoader progress={bootProgress} onDone={() => setBootLoading(false)} />
+      ) : null}
+      {/* HUD only after “войти в мир” — enter plaque must cover everything including crosshair. */}
+      {hud.playing ? (
+        <GameHud
+          hud={hud}
+          orient={orient}
+          phone={phone}
+          inviteUrl={inviteUrl}
+          onSelect={(i) => gameRef.current?.setSelected(i)}
+          onSetHotbarSlot={(slot, block) => gameRef.current?.setHotbarSlot(slot, block)}
+          onClearInvBadge={() => gameRef.current?.clearInvBadge()}
+          onInvite={() => void invite()}
+          onPickupHat={() => gameRef.current?.pickupHat()}
+          onDismissChest={() => gameRef.current?.dismissChest()}
+          onEmote={(kind) => gameRef.current?.playEmote(kind)}
+          onReset={() => gameRef.current?.resetIsland() ?? Promise.resolve(false)}
+          onSaveWorld={isCreator ? () => void onSaveWorld() : undefined}
+          saveHint={saveHint}
+          onKickFriday={() => void gameRef.current?.kickFriday()}
+          onToggleLock={() =>
+            void gameRef.current?.setIslandLocked(!hud.islandLocked)
+          }
+          onToggleBuild={() =>
+            void gameRef.current?.setGuestBuildAllowed(!hud.guestBuildAllowed)
+          }
+          fullscreen={fullscreen}
+          onFullscreen={() => void onFullscreen()}
+          onOverlayChange={setHudOverlay}
+          onKeybindsChange={() => gameRef.current?.reloadKeybinds()}
+          onOpenPickaxeGrip={() => {
+            const pose = gameRef.current?.getToolPose();
+            if (!pose) return;
+            setToolPose({
+              pickaxe: { ...pose.pickaxe },
+              arm: { ...pose.arm },
+            });
+            setGripOpen(true);
+          }}
+        />
+      ) : null}
+
+      {hud.playing && gripOpen && toolPose ? (
+        <PickaxeGripPanel
+          pose={toolPose}
+          onClose={() => setGripOpen(false)}
+          onChange={(next) => {
+            setToolPose(next);
+            gameRef.current?.setToolPose(next);
+          }}
+        />
+      ) : null}
 
       {kicked ? (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/80 px-6">
@@ -260,14 +311,9 @@ export function WorldStage({
         </div>
       ) : null}
 
-      {hud.playing ? (
+      {hud.playing && !hud.cinematicActive && !hudOverlay ? (
         <>
-          <div
-            className={cn(
-              "pointer-events-none absolute inset-0 z-20",
-              coarse ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
-            )}
-          >
+          <div className={cn("pointer-events-none absolute inset-0 z-20", phone ? "block" : "hidden")}>
             <LookSurface
               onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
               onHoldStart={() => gameRef.current?.beginPlace()}
@@ -276,41 +322,19 @@ export function WorldStage({
           </div>
           <TouchControls
             orient={orient}
-            force={coarse}
+            force={phone}
             breakCharge={hud.breakCharge}
             onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
             onBreakHold={() => gameRef.current?.beginBreak()}
             onBreakRelease={() => gameRef.current?.endBreak()}
             onJump={() => gameRef.current?.jump()}
           />
-          <PlaceHint placed={placed} orient={orient} force={coarse} />
+          <PlaceHint placed={placed} mined={mined} orient={orient} force={phone} />
         </>
       ) : null}
 
-      {needRotate && hud.playing ? (
-        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/80 px-6">
-          <div className="w-[min(360px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-center text-fg-on-ink">
-            <p className="font-mono text-sm uppercase tracking-widest">поверните телефон</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              {orient === "landscape" ? "Нужна альбомная ориентация." : "Нужна книжная ориентация."}{" "}
-              Меняется в меню на главной.
-            </p>
-            <Button asChild className="mt-4 w-full rounded-pixel font-mono uppercase tracking-wide" variant="secondary">
-              <Link to="/">на главную</Link>
-            </Button>
-            <button
-              type="button"
-              className="mt-2 min-h-11 w-full font-mono text-xs uppercase tracking-wide text-muted-on-ink"
-              onClick={() => setSkipRotate(true)}
-            >
-              играть так
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {!hud.playing && !lost ? (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-bg-deep/45 px-6">
+      {!hud.playing && !lost && !bootLoading ? (
+        <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 px-6">
           <div className="w-[min(420px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
             <p className="font-mono text-xl uppercase tracking-wide">мир готов</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
@@ -331,7 +355,7 @@ export function WorldStage({
       ) : null}
 
       {lost ? (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-bg-deep/70 px-6">
+        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center bg-bg-deep/70 px-6">
           <div className="w-[min(400px,100%)] rounded-pixel border-2 border-border bg-surface p-6 text-fg">
             <p className="font-mono text-xl uppercase tracking-wide">connection lost</p>
             <p className="mt-2 text-sm text-muted">Сервер недоступен. Попробуйте открыть мир снова.</p>
@@ -348,6 +372,8 @@ export function WorldStage({
           </p>
         </div>
       ) : null}
+      </div>
+      </div>
     </div>
   );
 }

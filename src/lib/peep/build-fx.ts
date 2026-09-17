@@ -44,10 +44,13 @@ export function createPlaceGhost(): PlaceGhost {
     transparent: true,
     opacity: 0.28,
     depthWrite: false,
+    depthTest: true,
     polygonOffset: true,
-    polygonOffsetFactor: -2,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
   });
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.98, 0.98), mat);
+  // Well under 1.0 so it never coplanar-fights the chunk mesh after place.
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.88, 0.88), mat);
   mesh.visible = false;
   mesh.renderOrder = 6;
   mesh.frustumCulled = false;
@@ -69,6 +72,9 @@ export function createBreakCracks(): BreakCracks {
     transparent: true,
     opacity: 0,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
   });
   const veil = new THREE.Mesh(new THREE.BoxGeometry(1.02, 1.02, 1.02), veilMat);
   const pos = crackPositions();

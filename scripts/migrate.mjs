@@ -41,13 +41,24 @@ async function main() {
     let count = 0;
     for (const { name } of pendingMigrations(entries, applied)) {
       const text = await readFile(join(migrationsDir, name), "utf8");
-      const tx = db.transaction(() => {
-        db.exec(text);
-        db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(name);
-      });
-      tx();
-      console.log(`[migrate] applied ${name}`);
-      count += 1;
+      try {
+        const tx = db.transaction(() => {
+          db.exec(text);
+          db.prepare("INSERT INTO _migrations (name) VALUES (?)").run(name);
+        });
+        tx();
+        console.log(`[migrate] applied ${name}`);
+        count += 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Idempotent: column/index already present (fresh schema / re-deploy).
+        if (/duplicate column|already exists/i.test(msg)) {
+          db.prepare("INSERT OR IGNORE INTO _migrations (name) VALUES (?)").run(name);
+          console.log(`[migrate] skipped ${name} (already in schema)`);
+          continue;
+        }
+        throw err;
+      }
     }
     console.log(count ? `[migrate] done — ${count} migration(s) applied.` : "[migrate] up to date.");
     console.log(`[migrate] sqlite: ${dbPath}`);

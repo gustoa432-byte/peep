@@ -5,7 +5,7 @@ import {
   stringifyGuestPermissions,
   type GuestPermissions,
 } from "./guest-permissions";
-import type { Story } from "./progress";
+import { normalizeStory, type Story } from "./progress";
 import {
   clampSavePayload,
   type WorldEditDelta,
@@ -44,22 +44,7 @@ function parseInventory(raw: unknown): Story {
       raw = {};
     }
   }
-  const inv = (raw && typeof raw === "object" ? raw : {}) as Partial<Story>;
-  const counts: Record<number, number> = {};
-  if (inv.counts && typeof inv.counts === "object") {
-    for (const [k, v] of Object.entries(inv.counts)) {
-      const id = Number(k);
-      const n = Number(v);
-      if (Number.isFinite(id) && Number.isFinite(n) && n > 0) counts[id] = Math.floor(n);
-    }
-  }
-  return {
-    counts,
-    friday: Boolean(inv.friday || inv.chest),
-    hat: Boolean(inv.hat),
-    chest: Boolean(inv.chest),
-    chestCraft: Math.min(1, Math.max(0, Number(inv.chestCraft) || 0)),
-  };
+  return normalizeStory((raw && typeof raw === "object" ? raw : {}) as Partial<Story>);
 }
 
 export async function saveWorldSnapshot(

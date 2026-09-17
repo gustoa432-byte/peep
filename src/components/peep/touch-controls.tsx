@@ -1,14 +1,18 @@
+import { remapLookDelta, remapStickOffset } from "@/lib/peep/fake-landscape";
 import { PLACE_DOUBLE_MS, PLACE_HOLD_CONFIRM_MS, PLACE_TAP_MAX_MS } from "@/lib/peep/constants";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { IconJump, IconPick } from "@/components/peep/peep-icons";
 import type { OrientMode } from "@/lib/peep/settings";
 import { cn } from "@/lib/utils";
 
-const BASE_R = 52;
-const BASE_R_LAND = 40;
-const KNOB_R = 22;
-const KNOB_R_LAND = 18;
+const BASE_R = 60;
+const BASE_R_LAND = 48;
+const KNOB_R = 25;
+const KNOB_R_LAND = 21;
 const DEAD_ZONE = 8;
+/** Extra invisible pad around the stick rim (hitbox > visual). */
+const STICK_PAD = 28;
+const STICK_PAD_LAND = 24;
 
 const LOOK_SLOP = 16;
 const TAP_DIST = 48;
@@ -118,7 +122,8 @@ export function LookSurface({
         const speed = Math.hypot(dx, dy) / dt;
         const extra = Math.max(0, speed - 0.35);
         const gain = Math.min(3.8, 1 + extra ** 1.65 * 0.9);
-        onLook(dx * gain, dy * gain);
+        const remapped = remapLookDelta(dx * gain, dy * gain);
+        onLook(remapped.dx, remapped.dy);
       }}
       onPointerUp={(e) => {
         if (active.current !== e.pointerId || !start.current) return;
@@ -164,6 +169,7 @@ function MoveStick({
   const active = useRef<number | null>(null);
   const radius = compact ? BASE_R_LAND : BASE_R;
   const knobR = compact ? KNOB_R_LAND : KNOB_R;
+  const pad = compact ? STICK_PAD_LAND : STICK_PAD;
 
   const origin = () => {
     const el = boxRef.current;
@@ -181,8 +187,9 @@ function MoveStick({
   const track = useCallback(
     (clientX: number, clientY: number) => {
       const { cx, cy } = origin();
-      const dx = clientX - cx;
-      const dy = clientY - cy;
+      let dx = clientX - cx;
+      let dy = clientY - cy;
+      ({ dx, dy } = remapStickOffset(dx, dy));
       const dist = Math.hypot(dx, dy);
       const clamped = Math.min(dist, radius);
       const ux = dist > 0 ? dx / dist : 0;
@@ -203,12 +210,12 @@ function MoveStick({
       ref={boxRef}
       className="pointer-events-auto absolute z-40 touch-none"
       style={{
-        left: compact ? "0.4rem" : "0.75rem",
+        left: compact ? "0.25rem" : "0.5rem",
         bottom: compact
-          ? "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)"
-          : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
-        width: radius * 2 + 16,
-        height: radius * 2 + 16,
+          ? "calc(env(safe-area-inset-bottom, 0px) + 0.25rem)"
+          : "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)",
+        width: radius * 2 + pad,
+        height: radius * 2 + pad,
       }}
       onPointerDown={(e) => {
         if (active.current !== null) return;
@@ -233,7 +240,14 @@ function MoveStick({
       aria-label="Движение"
     >
       <span
-        className="pointer-events-none absolute inset-2 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/20"
+        className="pointer-events-none absolute rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/20"
+        style={{
+          width: radius * 2,
+          height: radius * 2,
+          left: "50%",
+          top: "50%",
+          transform: "translate(-50%, -50%)",
+        }}
         aria-hidden
       />
       <span
@@ -255,17 +269,20 @@ function ActionButton({
   label,
   onFire,
   className,
+  style,
   children,
 }: {
   label: string;
   onFire: () => void;
   className?: string;
+  style?: CSSProperties;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
       aria-label={label}
+      style={style}
       className={cn(
         "pointer-events-auto flex items-center justify-center touch-none select-none rounded-pixel",
         "border-2 border-fg-on-ink/35 bg-bg-deep/55 text-fg-on-ink",
@@ -289,17 +306,20 @@ function BreakSpell({
   onHold,
   onRelease,
   className,
+  style,
 }: {
   charge: number;
   onHold: () => void;
   onRelease: () => void;
   className?: string;
+  style?: CSSProperties;
 }) {
   const c = 2 * Math.PI * 26;
   return (
     <button
       type="button"
       aria-label="Ломать"
+      style={style}
       className={cn(
         "pointer-events-auto relative flex items-center justify-center touch-none select-none rounded-pixel",
         "border-2 border-fg-on-ink/35 bg-bg-deep/55 text-fg-on-ink",
@@ -357,28 +377,42 @@ export function TouchControls({
     <div
       className={cn(
         "pointer-events-none absolute inset-0 z-40",
-        force ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
+        force ? "block" : "hidden",
       )}
     >
       <MoveStick onAxis={onAxis} compact={land} />
 
+      {/* Jump sits in the thumb corner; pickaxe sits above/inward. */}
       <div
-        className={cn("pointer-events-none absolute z-40 flex", land ? "flex-row items-end gap-2" : "flex-col items-end gap-2")}
+        className="pointer-events-none absolute z-40"
         style={{
-          right: land ? "0.4rem" : "0.5rem",
-          bottom: land
-            ? "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)"
-            : "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+          right: 0,
+          bottom: 0,
+          width: "13rem",
+          height: "12rem",
         }}
       >
         <BreakSpell
           charge={breakCharge}
           onHold={onBreakHold}
           onRelease={onBreakRelease}
-          className={land ? "size-14" : "size-14"}
+          className="absolute size-[65px]"
+          style={{
+            /* Inland from the right edge (левее) for thumb reach. */
+            right: "4.75rem",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.4rem)",
+          }}
         />
-        <ActionButton label="Прыжок" onFire={onJump} className={land ? "size-16" : "size-[4.25rem]"}>
-          <IconJump className={land ? "size-7" : "size-8"} />
+        <ActionButton
+          label="Прыжок"
+          onFire={onJump}
+          className="absolute size-[72px]"
+          style={{
+            right: "6.25rem",
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+          }}
+        >
+          <IconJump className="size-9" />
         </ActionButton>
       </div>
     </div>
@@ -387,31 +421,22 @@ export function TouchControls({
 
 export function PlaceHint({
   placed,
-  orient,
+  mined,
   force,
 }: {
   placed: number;
+  mined: number;
   orient: OrientMode;
   force?: boolean;
 }) {
-  const opacity = placed >= 5 ? 0.05 : 0.4;
-  const land = orient === "landscape";
+  // Phone / TG mobile only. Show after first dig until a few successful places.
+  if (!force || mined < 1 || placed >= 2) return null;
   return (
     <p
-      className={cn(
-        "pointer-events-none absolute z-30 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink",
-        force ? "block" : "hidden max-md:block [@media(pointer:coarse)]:block",
-      )}
-      style={{
-        left: land ? "7rem" : "7.25rem",
-        right: land ? "8rem" : "5.5rem",
-        bottom: land
-          ? "calc(env(safe-area-inset-bottom, 0px) + 3.6rem)"
-          : "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)",
-        opacity,
-      }}
+      className="pointer-events-none absolute top-[42%] left-1/2 z-[90] max-w-[min(22rem,88vw)] -translate-x-1/2 -translate-y-1/2 animate-pulse border-2 border-fg-on-ink bg-bg-deep/90 px-4 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-wide text-fg-on-ink shadow-[0_0_24px_rgba(255,255,255,0.35)]"
+      role="status"
     >
-      зажми кирку ломать · свайп — взгляд · двойной тап-держи — блок
+      чтобы поставить блок — два раза тапнуть + удержание
     </p>
   );
 }

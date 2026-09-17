@@ -1,23 +1,29 @@
-import { Link } from "@tanstack/react-router";
-import { type ButtonHTMLAttributes, type ReactNode, useState } from "react";
-import { EmoteBar } from "@/components/peep/emote-bar";
+import { useNavigate } from "@tanstack/react-router";
+import { type ButtonHTMLAttributes, type ReactNode, useEffect, useRef, useState } from "react";
+import { EmoteBar, ReactionMenu } from "@/components/peep/emote-bar";
 import {
+  IconBag,
   IconClose,
   IconCopy,
   IconFullscreen,
   IconFullscreenExit,
   IconGear,
-  IconPick,
   IconQr,
   IconReset,
   IconUsers,
 } from "@/components/peep/peep-icons";
 import { QrMark } from "@/components/peep/qr-mark";
 import { Button } from "@/components/ui/button";
-import { BARRIER, BLOCK_COLORS, BLOCK_NAMES, GOLD, GRASS, LEAVES, NEON, WOOD } from "@/lib/peep/constants";
+import { BARRIER, BLOCK_COLORS, BLOCK_NAMES, DYNAMITE, GOLD, GRASS, LEAVES, NEON, WOOD } from "@/lib/peep/constants";
+import { preferHomeMenu } from "@/lib/peep/remember-world";
+import { KeyboardBindsPanel } from "@/components/peep/keyboard-binds-panel";
 import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
+
+type SettingsTab = "game" | "keyboard";
+
+const LONG_PRESS_MS = 500;
 
 function swatch(block: number): string {
   const c = BLOCK_COLORS[block] ?? 0x3a332c;
@@ -26,12 +32,15 @@ function swatch(block: number): string {
 
 function swatchStyle(block: number): { background: string } | undefined {
   if (block === BARRIER) return undefined;
-  if (block === GRASS) return { background: "linear-gradient(#4fbe45 40%, #7a4e30 40%)" };
+  if (block === GRASS) return { background: "linear-gradient(#5cb85c 40%, #825a38 40%)" };
   if (block === WOOD) return { background: "linear-gradient(90deg, #8f5a30 0%, #c49254 46%, #8f5a30 52%, #c49254 100%)" };
   if (block === LEAVES) return { background: "linear-gradient(#5ed45a 55%, #2f8f34 55%)" };
   if (block === GOLD) return { background: "linear-gradient(#f0d36a 40%, #c4922a 40%)" };
   if (block === NEON) {
     return { background: "linear-gradient(135deg, #00e5ff 0%, #00e5ff 45%, #ff2bd6 45%, #ff2bd6 100%)" };
+  }
+  if (block === DYNAMITE) {
+    return { background: "linear-gradient(#c9a46a 22%, #d43c2c 22%, #d43c2c 78%, #8a2a1c 78%)" };
   }
   return { background: swatch(block) };
 }
@@ -73,6 +82,11 @@ export function GameHud({
   onToggleBuild,
   fullscreen,
   onFullscreen,
+  onSetHotbarSlot,
+  onClearInvBadge,
+  onOverlayChange,
+  onKeybindsChange,
+  onOpenPickaxeGrip,
 }: {
   hud: HudState;
   orient: OrientMode;
@@ -91,80 +105,157 @@ export function GameHud({
   onToggleBuild?: () => void;
   fullscreen: boolean;
   onFullscreen: () => void;
+  onSetHotbarSlot: (slot: number, block: number) => void;
+  onClearInvBadge: () => void;
+  /** True while settings / inventory / QR / confirm cover the play UI. */
+  onOverlayChange?: (open: boolean) => void;
+  /** Desktop: refresh in-game keybind cache after settings edit. */
+  onKeybindsChange?: () => void;
+  /** Open pickaxe grip tuner. */
+  onOpenPickaxeGrip?: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("game");
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [invOpen, setInvOpen] = useState(false);
+  const [replaceSlot, setReplaceSlot] = useState<number | null>(null);
+  const [badgeBounce, setBadgeBounce] = useState(false);
+  const prevBadge = useRef(0);
+  const longTimer = useRef(0);
+  const longFired = useRef(false);
+  const navigate = useNavigate();
   const land = orient === "landscape";
+  const cine = hud.cinematicActive;
+  const overlayOpen = settingsOpen || invOpen || qrOpen || confirmReset;
+
+  const goHome = () => {
+    preferHomeMenu();
+    void navigate({ to: "/" });
+  };
+
+  useEffect(() => {
+    onOverlayChange?.(overlayOpen);
+    return () => onOverlayChange?.(false);
+  }, [overlayOpen, onOverlayChange]);
+
+  useEffect(() => {
+    if (hud.invBadge > prevBadge.current && hud.invBadge > 0) {
+      setBadgeBounce(true);
+      const t = window.setTimeout(() => setBadgeBounce(false), 450);
+      prevBadge.current = hud.invBadge;
+      return () => window.clearTimeout(t);
+    }
+    prevBadge.current = hud.invBadge;
+  }, [hud.invBadge]);
+
+  useEffect(
+    () => () => {
+      if (longTimer.current) window.clearTimeout(longTimer.current);
+    },
+    [],
+  );
+
+  const openInventory = (slot: number | null = null) => {
+    setReplaceSlot(slot);
+    setInvOpen(true);
+    onClearInvBadge();
+  };
+
+  const closeInventory = () => {
+    setInvOpen(false);
+    setReplaceSlot(null);
+  };
+
+  const clearLongPress = () => {
+    if (longTimer.current) {
+      window.clearTimeout(longTimer.current);
+      longTimer.current = 0;
+    }
+  };
 
   return (
     <div
-      className="pointer-events-none absolute inset-0 z-30 font-mono text-fg-on-ink"
+      data-peep-hud
+      className={cn(
+        "pointer-events-none absolute inset-0 font-mono text-fg-on-ink",
+        overlayOpen ? "z-[400]" : "z-30",
+      )}
       style={{
-        paddingTop: "env(safe-area-inset-top, 0px)",
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingBottom: "var(--tg-safe-area-inset-bottom, env(safe-area-inset-bottom, 0px))",
+        display: cine ? "none" : undefined,
       }}
     >
+      {/* Clear Telegram header + notch; compact translucent top cluster. */}
       <div
-        className={cn(
-          "pointer-events-auto absolute flex items-start justify-between gap-1",
-          land ? "top-2 right-2 left-2" : "top-3 right-3 left-3 gap-2",
-        )}
+        id="top-nav-bar"
+        className="pointer-events-auto absolute z-[100] flex flex-nowrap items-center"
       >
-        <div className="flex items-center gap-1">
-          <Link
-            to="/"
-            aria-label="На главную"
-            className="flex h-11 min-w-11 flex-col justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2.5 active:scale-95"
-          >
-            <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
-            {land ? null : <span className="mt-0.5 text-xs uppercase tracking-wider text-muted-on-ink">home</span>}
-          </Link>
-          <Chip
-            aria-label={fullscreen ? "Выйти из полного экрана" : "Полный экран"}
-            className="size-11 shrink-0 px-0"
-            onClick={onFullscreen}
-          >
-            {fullscreen ? <IconFullscreenExit className="size-4" /> : <IconFullscreen className="size-4" />}
-          </Chip>
+        <button
+          type="button"
+          aria-label="На главную"
+          className="relative z-[110] flex h-11 min-w-11 items-center justify-center border-2 border-fg-on-ink/25 bg-bg-deep/40 px-2.5 active:scale-95"
+          onPointerDown={(e) => {
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            goHome();
+          }}
+        >
+          <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
+        </button>
+        <Chip
+          aria-label={fullscreen ? "Выйти из полного экрана" : "Полный экран"}
+          className="size-11 shrink-0 px-0"
+          onClick={onFullscreen}
+        >
+          {fullscreen ? <IconFullscreenExit className="size-4" /> : <IconFullscreen className="size-4" />}
+        </Chip>
+
+        {hud.playing ? (
+          phone ? (
+            <ReactionMenu onEmote={onEmote} emoteCd={hud.emoteCd} />
+          ) : (
+            <EmoteBar layout="row" onEmote={onEmote} emoteCd={hud.emoteCd} />
+          )
+        ) : null}
+
+        <div className="flex h-11 items-center gap-1.5 border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2 text-xs uppercase tracking-wide text-muted-on-ink">
+          <IconUsers className="size-3.5" />
+          <span className="tabular-nums">{hud.peerCount}</span>
         </div>
 
-        {hud.playing ? <EmoteBar layout="row" onEmote={onEmote} /> : <span className="min-w-0 flex-1" />}
+        {hud.fridayUnlocked ? (
+          <>
+            <Chip
+              aria-label="Поделиться с Пятницей"
+              className="bg-primary text-primary-fg border-primary px-3"
+              onClick={() => onInvite()}
+            >
+              <IconCopy className="size-3.5" />
+              <span className="hidden sm:inline">пятница</span>
+            </Chip>
+            <Chip aria-label="QR Пятницы" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
+              <IconQr className="size-4" />
+            </Chip>
+          </>
+        ) : null}
 
-        <div className="flex shrink-0 items-center gap-1">
-          <div className="hidden h-11 items-center gap-1.5 rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/70 px-2 text-xs uppercase tracking-wide text-muted-on-ink sm:flex">
-            <IconUsers className="size-3.5" />
-            <span className="tabular-nums">{hud.peerCount}</span>
-          </div>
-
-          {hud.fridayUnlocked ? (
-            <>
-              <Chip
-                aria-label="Пятница"
-                className="bg-primary text-primary-fg border-primary px-3"
-                onClick={() => {
-                  onInvite();
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 1600);
-                }}
-              >
-                <IconCopy className="size-3.5" />
-                <span className="hidden sm:inline">{copied ? "ok" : "пятница"}</span>
-              </Chip>
-              <Chip aria-label="QR Пятницы" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
-                <IconQr className="size-4" />
-              </Chip>
-            </>
-          ) : null}
-
-          <Chip aria-label="Настройки" className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
-            <IconGear className="size-4" />
+        {onOpenPickaxeGrip ? (
+          <Chip aria-label="Кирка" className="h-11 px-2.5" onClick={onOpenPickaxeGrip}>
+            кирка
           </Chip>
-        </div>
+        ) : null}
+        <Chip aria-label="Настройки" className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
+          <IconGear className="size-4" />
+        </Chip>
       </div>
 
+      {/* Crosshair only while playing and no modal is covering the view. */}
+      {!settingsOpen && !invOpen && !qrOpen && !confirmReset ? (
       <div
         aria-hidden
         className="pointer-events-none z-10"
@@ -207,55 +298,176 @@ export function GameHud({
           <div className="absolute top-1/2 left-0 h-px w-full -translate-y-1/2 bg-fg-on-ink" />
         </div>
       </div>
+      ) : null}
 
-      {hud.playing && !hud.locked && !phone ? (
-        <p className="pointer-events-none absolute top-1/2 left-1/2 z-10 mt-8 -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80">
-          кликните в мир
+      {hud.censorFlash > 0 && !cine ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-[60] bg-[#e04532] transition-opacity duration-75"
+          style={{ opacity: Math.min(0.55, hud.censorFlash * 0.55) }}
+          aria-hidden
+        />
+      ) : null}
+
+      {hud.playing && !hud.locked && !phone && !cine ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-24 z-20"
+          style={{
+            top: "calc(var(--tg-safe-area-inset-top, env(safe-area-inset-top, 20px)) + 7.5rem)",
+          }}
+          aria-hidden
+        >
+          <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/90">
+            кликните по экрану для прицела
+            <span className="mt-1 block text-[10px] tracking-wider text-muted-on-ink">
+              Esc — курсор · клик — Pointer Lock
+            </span>
+          </span>
+        </div>
+      ) : null}
+
+      {hud.notice && !cine ? (
+        <p className="pointer-events-none absolute top-[18%] left-1/2 z-50 -translate-x-1/2 border-2 border-fg-on-ink bg-bg-deep/90 px-3 py-1.5 font-mono text-sm font-bold uppercase tracking-wide text-fg-on-ink">
+          {hud.notice}
         </p>
+      ) : null}
+
+      {hud.lookHint && !cine ? (
+        <p className="pointer-events-none absolute bottom-[20%] left-1/2 z-50 -translate-x-1/2 border-2 border-[#ffe14a]/80 bg-bg-deep/80 px-3 py-1.5 text-center font-mono text-sm font-bold uppercase tracking-wide text-[#ffe14a] sm:text-base">
+          {hud.lookHint}
+        </p>
+      ) : null}
+
+      {hud.trollTracker && !cine ? (
+        <div
+          className={cn(
+            "pointer-events-none absolute z-50 flex flex-col gap-2",
+            phone
+              ? "top-[14%] left-3 max-w-[min(46vw,13.5rem)] items-start"
+              : "top-[10%] left-1/2 w-[min(92vw,28rem)] -translate-x-1/2 items-center",
+          )}
+        >
+          {hud.trollTracker.showTitle ? (
+            <p
+              className={cn(
+                "font-display font-black uppercase tracking-wide text-fg-on-ink",
+                phone ? "text-left text-sm leading-tight" : "text-center text-lg sm:text-xl",
+              )}
+            >
+              ОПЛЫВИ ОСТРОВ 3 РАЗА
+            </p>
+          ) : null}
+          {!hud.trollTracker.success ? (
+            <div
+              className={cn(
+                "flex items-center gap-3 border-2 border-fg-on-ink/40 bg-bg-deep/80 px-2 py-1.5",
+                phone && "gap-2 px-1.5 py-1",
+              )}
+              aria-hidden
+            >
+              <span
+                className="flex size-9 items-center justify-center font-mono text-xl font-black text-[#ffe14a] transition-transform duration-100"
+                style={{ transform: `rotate(${hud.trollTracker.guideDeg}deg)` }}
+              >
+                ↑
+              </span>
+              <div className="flex items-center gap-1 font-mono text-base leading-none text-fg-on-ink/35">
+                {[0, 1, 2, 3].map((i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      "transition-colors duration-150",
+                      i < hud.trollTracker!.sectorsDone && "text-[#ffe14a]",
+                      hud.trollTracker!.sectorFlash > 0 &&
+                        i === hud.trollTracker!.sectorsDone - 1 &&
+                        "text-[#ffe14a]",
+                    )}
+                  >
+                    →
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div
+            className={cn(
+              "flex items-baseline gap-3 border-2 border-fg-on-ink bg-bg-deep/85 px-3 py-1.5 font-mono text-fg-on-ink transition-transform duration-150",
+              phone && "gap-2 px-2.5 py-1",
+              hud.trollTracker.sectorFlash > 0 && "scale-110 border-[#ffe14a] bg-[#ffe14a]/25 text-[#ffe14a]",
+            )}
+          >
+            <p className={cn("font-bold uppercase tracking-wide", phone ? "text-xs" : "text-sm")}>
+              {hud.trollTracker.success
+                ? `${hud.trollTracker.laps}/${hud.trollTracker.total} ✅`
+                : `круг ${hud.trollTracker.laps}/${hud.trollTracker.total}`}
+            </p>
+            {!hud.trollTracker.success ? (
+              <p
+                className={cn(
+                  "font-black tabular-nums text-[#e04532]",
+                  phone ? "text-base" : "text-xl",
+                )}
+              >
+                {String(Math.floor(hud.trollTracker.secondsLeft / 60)).padStart(2, "0")}:
+                {String(hud.trollTracker.secondsLeft % 60).padStart(2, "0")}
+              </p>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
       <div
         className={cn(
-          "pointer-events-auto absolute z-30 flex items-end gap-1",
-          land
-            ? "bottom-3 left-1/2 -translate-x-1/2 flex-row"
-            : cn(
-                "bottom-3 left-1/2 -translate-x-1/2 flex-row",
-                "max-md:bottom-[9.75rem] max-md:left-3 max-md:translate-x-0 max-md:flex-col",
-                "[@media(pointer:coarse)]:bottom-[9.75rem] [@media(pointer:coarse)]:left-3 [@media(pointer:coarse)]:translate-x-0 [@media(pointer:coarse)]:flex-col",
-              ),
+          "pointer-events-auto absolute z-50 flex items-end gap-1",
+          phone && !land
+            ? "bottom-[9.75rem] left-3 translate-x-0 flex-col"
+            : "bottom-3 left-1/2 -translate-x-1/2 flex-row",
         )}
       >
         <div
           className={cn(
             "flex items-end gap-1 rounded-pixel border-2 border-fg-on-ink/15 bg-bg-deep/5 p-1",
-            land ? "flex-row" : "flex-row max-md:flex-col [@media(pointer:coarse)]:flex-col",
+            phone && !land ? "flex-col" : "flex-row",
           )}
         >
-          <div
-            aria-hidden
-            className={cn(
-              "relative hidden size-11 items-center justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-fg-on-ink/10 sm:size-12 md:flex",
-              "[@media(pointer:coarse)]:hidden",
-              land && "size-10 sm:size-10",
-            )}
-          >
-            <IconPick className="size-7" />
-          </div>
-          {hud.palette.map((block, i) => (
+          {hud.palette.slice(0, 5).map((block, i) => (
             <button
-              key={block}
+              key={`slot-${i}-${block}`}
               type="button"
-              onClick={() => onSelect(i)}
+              onClick={() => {
+                if (longFired.current) {
+                  longFired.current = false;
+                  return;
+                }
+                onSelect(i);
+              }}
+              onPointerDown={(e) => {
+                if (!phone) return;
+                longFired.current = false;
+                clearLongPress();
+                longTimer.current = window.setTimeout(() => {
+                  longTimer.current = 0;
+                  longFired.current = true;
+                  openInventory(i);
+                }, LONG_PRESS_MS);
+                e.stopPropagation();
+              }}
+              onPointerUp={() => clearLongPress()}
+              onPointerCancel={() => clearLongPress()}
+              onPointerLeave={() => clearLongPress()}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                openInventory(i);
+              }}
               aria-label={BLOCK_NAMES[block] ?? `block ${block}`}
               aria-pressed={hud.selected === i}
               className={cn(
                 "relative flex size-11 items-center justify-center rounded-pixel border-2 transition-transform sm:size-12",
-                "[@media(pointer:coarse)]:size-10",
+                phone && "size-10",
                 land && "size-10 sm:size-10",
-                hud.selected === i
+                hud.selected === i || replaceSlot === i
                   ? "scale-105 border-fg-on-ink bg-fg-on-ink/15"
                   : "border-transparent bg-fg-on-ink/5 active:scale-95",
+                replaceSlot === i && "ring-2 ring-primary",
               )}
             >
               <span
@@ -266,17 +478,124 @@ export function GameHud({
                 )}
                 style={swatchStyle(block)}
               />
-              <span className="absolute right-0.5 bottom-0.5 text-[10px] leading-none tabular-nums text-fg-on-ink">
+              {block === DYNAMITE && hud.dynamiteCd > 0 ? (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1px]"
+                >
+                  <span
+                    className="absolute inset-x-0 bottom-0 bg-[#e04532]/70 transition-[height] duration-200"
+                    style={{ height: `${Math.round(hud.dynamiteCd * 100)}%` }}
+                  />
+                  <span
+                    className="absolute inset-0 rounded-[1px] border-2 border-[#ffe14a]/80"
+                    style={{
+                      clipPath: `inset(${Math.round((1 - hud.dynamiteCd) * 100)}% 0 0 0)`,
+                    }}
+                  />
+                </span>
+              ) : null}
+              <span className="absolute right-0.5 bottom-0.5 z-[1] text-[10px] leading-none tabular-nums text-fg-on-ink">
                 {block === BARRIER ? "∞" : (hud.counts[i] ?? 0)}
               </span>
             </button>
           ))}
+
+          <button
+            type="button"
+            aria-label="Инвентарь"
+            onClick={() => openInventory(null)}
+            className={cn(
+              "relative flex size-11 items-center justify-center rounded-pixel border-2 border-fg-on-ink/30 bg-bg-deep/55 text-fg-on-ink sm:size-12",
+              phone && "size-10",
+              land && "size-10 sm:size-10",
+              "active:scale-95",
+            )}
+          >
+            <IconBag className="size-6" />
+            <div
+              id="inventory-badge"
+              className={cn(
+                "inventory-badge",
+                hud.invBadge <= 0 && "hidden",
+                badgeBounce && "badge-bounce",
+              )}
+            >
+              {hud.invBadge > 9 ? "9+" : hud.invBadge > 0 ? `+${hud.invBadge}` : ""}
+            </div>
+          </button>
         </div>
       </div>
 
-      <p className="absolute bottom-20 left-1/2 hidden -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80 md:block [@media(pointer:coarse)]:hidden">
-        WASD · мышь · пробел · ломай чтобы брать · зажать ПКМ ставить · 1–7 · E/R/T
-      </p>
+      {invOpen ? (
+        <div className="pointer-events-auto absolute inset-0 z-[300] flex items-end justify-center bg-bg-deep/85 px-3 pb-3 sm:items-center sm:pb-0">
+          <div
+            className={cn(
+              "flex max-h-full w-[min(28rem,100%)] flex-col overflow-hidden rounded-pixel border-2 border-border-ink bg-surface-ink p-4 text-fg-on-ink",
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-mono text-sm uppercase tracking-widest">
+                {replaceSlot != null ? `замена слота ${replaceSlot + 1}` : "инвентарь"}
+              </p>
+              <button
+                type="button"
+                aria-label="Закрыть"
+                className="flex size-11 items-center justify-center text-muted-on-ink"
+                onClick={closeInventory}
+              >
+                <IconClose className="size-4" />
+              </button>
+            </div>
+            <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-6">
+              {hud.catalog.map((block, i) => {
+                const count = hud.catalogCounts[i] ?? 0;
+                return (
+                  <button
+                    key={`cat-${block}`}
+                    type="button"
+                    aria-label={BLOCK_NAMES[block] ?? `block ${block}`}
+                    className="relative flex aspect-square items-center justify-center rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/40 active:scale-95"
+                    onClick={() => {
+                      if (replaceSlot != null) {
+                        onSetHotbarSlot(replaceSlot, block);
+                        closeInventory();
+                        return;
+                      }
+                      const idx = hud.palette.indexOf(block);
+                      if (idx >= 0) {
+                        onSelect(idx);
+                        closeInventory();
+                        return;
+                      }
+                      onSetHotbarSlot(hud.selected, block);
+                      closeInventory();
+                    }}
+                  >
+                    <span
+                      className={cn(
+                        "size-7 rounded-pixel border border-bg-deep/40 shadow-[inset_0_-3px_0_rgba(0,0,0,0.18)]",
+                        block === BARRIER && "peep-air-swatch shadow-none",
+                        block !== BARRIER && count <= 0 && "opacity-30",
+                      )}
+                      style={swatchStyle(block)}
+                    />
+                    <span className="absolute right-0.5 bottom-0.5 text-[10px] leading-none tabular-nums text-fg-on-ink">
+                      {block === BARRIER ? "∞" : count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {!phone ? (
+        <p className="absolute bottom-20 left-1/2 -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80">
+          WASD · мышь · пробел · E/R/T реакции · F говняшка · C цензура · 1–5 слоты · ПКМ ставить
+        </p>
+      ) : null}
 
       {hud.chestBar ? (
         <div
@@ -288,7 +607,10 @@ export function GameHud({
           </p>
           <div className="h-2.5 overflow-hidden rounded-sm border border-fg-on-ink/40 bg-bg-deep/80 shadow-[0_1px_4px_rgba(0,0,0,0.55)]">
             <div
-              className="h-full origin-left bg-[#5ecf62] transition-[width] duration-75"
+              className={cn(
+                "h-full origin-left transition-[width] duration-75",
+                hud.chestBar.crafting && "animate-pulse",
+              )}
               style={{
                 width: `${Math.round(hud.chestBar.hp * 100)}%`,
                 background:
@@ -300,17 +622,8 @@ export function GameHud({
               }}
             />
           </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-sm border border-fg-on-ink/35 bg-bg-deep/75">
-            <div
-              className={cn(
-                "h-full bg-[#f0c14a] transition-[width] duration-75",
-                hud.chestBar.crafting && "animate-pulse",
-              )}
-              style={{ width: `${Math.round(hud.chestBar.craft * 100)}%` }}
-            />
-          </div>
           <p className="mt-0.5 text-center font-mono text-[10px] tabular-nums text-fg-on-ink/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-            {Math.round(hud.chestBar.craft * 100)}%
+            {Math.round(hud.chestBar.hp * 100)}%
           </p>
         </div>
       ) : null}
@@ -340,8 +653,6 @@ export function GameHud({
                   onClick={() => {
                     onInvite();
                     onDismissChest();
-                    setCopied(true);
-                    window.setTimeout(() => setCopied(false), 1600);
                   }}
                 >
                   позвать пятницу
@@ -360,7 +671,7 @@ export function GameHud({
       ) : null}
 
       {qrOpen ? (
-        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
+        <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 px-6">
           <div className="w-[min(320px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
             <div className="flex items-center justify-between gap-3">
               <p className="font-mono text-sm uppercase tracking-widest">пятница</p>
@@ -379,135 +690,150 @@ export function GameHud({
             <p className="mt-3 break-all text-center font-mono text-xs text-muted-on-ink">{hud.worldId}</p>
             <Button
               className="mt-4 w-full rounded-pixel font-mono uppercase tracking-wide"
-              onClick={() => {
-                onInvite();
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              }}
+              onClick={() => onInvite()}
             >
-              {copied ? "ссылка скопирована" : "позвать пятницу"}
+              позвать пятницу
             </Button>
           </div>
         </div>
       ) : null}
 
       {settingsOpen ? (
-        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
-          <div className={cn("w-[min(380px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink", land && "max-h-[90dvh] overflow-y-auto")}>
-            <div className="flex items-center justify-between gap-3">
+        <div className="peep-safe pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85">
+          <div className="flex max-h-full w-[min(36rem,100%)] flex-col overflow-hidden rounded-pixel border-2 border-border-ink bg-surface-ink text-fg-on-ink">
+            <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2">
               <p className="font-mono text-sm uppercase tracking-widest">настройки</p>
               <button
                 type="button"
                 aria-label="Закрыть"
-                className="flex size-11 items-center justify-center text-muted-on-ink"
-                onClick={() => setSettingsOpen(false)}
+                className="flex size-10 items-center justify-center text-muted-on-ink"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setSettingsTab("game");
+                }}
               >
                 <IconClose className="size-4" />
               </button>
             </div>
-            <div className="mt-5">
-              {phone ? (
-                <p className="text-sm leading-relaxed text-muted-on-ink">
-                  Полный экран — кнопка рядом с Peep. Ориентация — шестерёнка на главной.
-                </p>
+            {!phone ? (
+              <div className="mx-4 flex shrink-0 rounded-pixel border-2 border-fg-on-ink/20">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("game")}
+                  className={cn(
+                    "min-h-10 flex-1 px-3 font-mono text-xs uppercase tracking-wide",
+                    settingsTab === "game" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
+                  )}
+                >
+                  игра
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("keyboard")}
+                  className={cn(
+                    "min-h-10 flex-1 px-3 font-mono text-xs uppercase tracking-wide",
+                    settingsTab === "keyboard" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
+                  )}
+                >
+                  клавиатура
+                </button>
+              </div>
+            ) : null}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-4">
+              {!phone && settingsTab === "keyboard" ? (
+                <KeyboardBindsPanel onChange={() => onKeybindsChange?.()} />
               ) : (
-                <p className="text-sm leading-relaxed text-muted-on-ink">
-                  На компьютере мир на весь экран. Кнопка полного экрана прячет панель браузера.
-                </p>
+                <>
+                  <p className="text-sm leading-relaxed text-muted-on-ink">
+                    {phone
+                      ? "Полный экран — кнопка рядом с Peep. Меню и игра всегда в альбоме."
+                      : "На компьютере мир на весь экран. Кнопка полного экрана прячет панель браузера."}
+                  </p>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {phone && hud.fridayUnlocked ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsOpen(false);
+                          setQrOpen(true);
+                        }}
+                        className="flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                      >
+                        <IconQr className="size-4" />
+                        пятница
+                      </button>
+                    ) : null}
+                    {hud.isCreator && hud.playing && onKickFriday ? (
+                      <button
+                        type="button"
+                        disabled={!hud.fridayOnline}
+                        onClick={onKickFriday}
+                        className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide disabled:opacity-40"
+                      >
+                        выгнать
+                      </button>
+                    ) : null}
+                    {hud.isCreator && hud.playing && onToggleLock ? (
+                      <button
+                        type="button"
+                        onClick={onToggleLock}
+                        className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                      >
+                        {hud.islandLocked ? "открыть остров" : "закрыть остров"}
+                      </button>
+                    ) : null}
+                    {hud.isCreator && hud.playing && onToggleBuild ? (
+                      <button
+                        type="button"
+                        onClick={onToggleBuild}
+                        className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                      >
+                        {hud.guestBuildAllowed ? "запретить стройку" : "разрешить стройку"}
+                      </button>
+                    ) : null}
+                    {hud.playing && onSaveWorld ? (
+                      <button
+                        type="button"
+                        onClick={() => onSaveWorld()}
+                        className="flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
+                      >
+                        {saveHint ?? "сохранить мир"}
+                      </button>
+                    ) : null}
+                    {hud.playing && hud.isCreator ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsOpen(false);
+                          setConfirmReset(true);
+                        }}
+                        className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
+                      >
+                        <IconReset className="size-4" />
+                        сбросить остров
+                      </button>
+                    ) : null}
+                  </div>
+                  {hud.isCreator && hud.playing ? (
+                    <p className="mt-3 font-mono text-[10px] uppercase tracking-wide text-muted-on-ink">
+                      {hud.fridayOnline ? "Пятница на острове" : "Пятница офлайн · соло"}
+                    </p>
+                  ) : null}
+                </>
               )}
             </div>
-            {phone && hud.fridayUnlocked ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  setQrOpen(true);
-                }}
-                className="mt-4 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
-              >
-                <IconQr className="size-4" />
-                пятница
-              </button>
-            ) : null}
-            {hud.isCreator && hud.playing ? (
-              <div className="mt-6 border-t-2 border-border-ink pt-5">
-                <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">
-                  управление пятницей
-                </p>
-                <p className="mt-1 text-xs text-muted-on-ink">
-                  {hud.fridayOnline ? "Пятница на острове" : "Пятница офлайн · соло"}
-                </p>
-                {onKickFriday ? (
-                  <button
-                    type="button"
-                    disabled={!hud.fridayOnline}
-                    onClick={onKickFriday}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide disabled:opacity-40"
-                  >
-                    выгнать
-                  </button>
-                ) : null}
-                {onToggleLock ? (
-                  <button
-                    type="button"
-                    onClick={onToggleLock}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
-                  >
-                    {hud.islandLocked ? "открыть остров" : "закрыть остров"}
-                  </button>
-                ) : null}
-                {onToggleBuild ? (
-                  <button
-                    type="button"
-                    onClick={onToggleBuild}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
-                  >
-                    {hud.guestBuildAllowed ? "запретить строительство" : "разрешить строительство"}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            {hud.playing && (onSaveWorld || hud.isCreator) ? (
-              <div className="mt-6 border-t-2 border-border-ink pt-5">
-                <p className="font-mono text-xs uppercase tracking-widest text-muted-on-ink">остров</p>
-                {onSaveWorld ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSaveWorld();
-                    }}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
-                  >
-                    {saveHint ?? "сохранить мир"}
-                  </button>
-                ) : null}
-                {hud.isCreator ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      setConfirmReset(true);
-                    }}
-                    className="mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
-                  >
-                    <IconReset className="size-4" />
-                    сбросить остров
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </div>
       ) : null}
 
       {confirmReset ? (
-        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
-          <div className="w-[min(400px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
+        <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 p-3">
+          <div className="max-h-full w-[min(24rem,100%)] overflow-y-auto rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
             <p className="font-mono text-lg uppercase tracking-wide">сбросить остров?</p>
             <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
               Все поставленные блоки исчезнут. Остров станет таким, каким был в начале.
             </p>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+            <div className="mt-5 flex flex-row gap-2">
               <Button
                 variant="ghost"
                 className="flex-1 rounded-pixel border-2 border-border-ink font-mono uppercase"

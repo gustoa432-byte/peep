@@ -61,8 +61,8 @@ export const MAX_WORLDS_PER_ACCOUNT = 3;
 export const DYNAMITE_MAX_CHARGES = 10;
 /** One charge every 30s when below cap. */
 export const DYNAMITE_RECHARGE_MS = 30 * 1000;
-/** Fuse after place — half of the previous 3s. */
-export const DYNAMITE_FUSE_S = 1.5;
+/** Fuse after place — half a second to detonation. */
+export const DYNAMITE_FUSE_S = 0.5;
 /** Destroyable blocks farmed per blast (nearest first). */
 export const DYNAMITE_BLAST_BLOCKS = 100;
 export const DYNAMITE_BLAST_RADIUS = 8;
@@ -109,12 +109,19 @@ export function isMeshEmpty(block: number): boolean {
   return block === AIR || block === BARRIER;
 }
 
+/** Neighbor does not fully occlude a face (air / barrier / leafy see-through). */
+export function isFaceTransparent(block: number): boolean {
+  return block === AIR || block === BARRIER || block === LEAVES;
+}
+
 export const CHEST_X = 24;
 export const CHEST_Y = 1;
 export const CHEST_Z = 24;
 
 /** Chunks kept meshed around the player. Island is the start, ocean goes on. */
 export const VIEW_CHUNKS = 3;
+/** World units from player to chunk stream edge — also fog far (hide water rim). */
+export const CHUNK_RENDER_DISTANCE = VIEW_CHUNKS * CHUNK_S;
 export const MESH_PER_FRAME = 2;
 export const WORLD_EDIT_LIM = 4095;
 /** Host + up to two Fridays. */
@@ -156,15 +163,16 @@ export const RATE_MAX_EDITS = 120;
 export const PLACE_TAP_MAX_MS = 260;
 export const PLACE_DOUBLE_MS = 280;
 export const PLACE_HOLD_CONFIRM_MS = 70;
-export const PLACE_HOLD_S = 0.45;
-export const BREAK_HOLD_S = 0.3;
+/** One hit / one anim to place or break a block. */
+export const PLACE_HOLD_S = 0.15;
+export const BREAK_HOLD_S = 0.15;
 /** Opening the buried chest is a long hold — not a normal dig. */
 export const CHEST_CRAFT_S = 30;
 /** Show chest HP/craft HUD only when the player is this close (blocks). */
 export const CHEST_BAR_RANGE = 3;
-/** After a place/break, wait a random beat before the next one can start. */
-export const EDIT_REPEAT_DELAY_MIN_S = 0.2;
-export const EDIT_REPEAT_DELAY_MAX_S = 0.3;
+/** Cooldown between place/break actions (~10 edits / sec max). */
+export const EDIT_REPEAT_DELAY_MIN_S = 0.1;
+export const EDIT_REPEAT_DELAY_MAX_S = 0.1;
 
 export function nextEditDelay(): number {
   return EDIT_REPEAT_DELAY_MIN_S + Math.random() * (EDIT_REPEAT_DELAY_MAX_S - EDIT_REPEAT_DELAY_MIN_S);
@@ -172,36 +180,35 @@ export function nextEditDelay(): number {
 
 export const WORLD_ID_RE = /^[a-hjkmnp-z2-9]{6}$/;
 
-/** Matte palette — matches hotbar swatches; vertex AO + Lambert do the shading. */
+/** Juicy Pixar-ish palette — hotbar swatches + vertex colors. */
 export const BLOCK_COLORS: Record<number, number> = {
-  [GRASS]: 0x68a85a,
-  [DIRT]: 0x8a5a38,
-  [STONE]: 0x7a7670,
-  [WOOD]: 0xb07a45,
-  [SAND]: 0xe0c48a,
-  [LEAVES]: 0x4db84a,
-  [CHEST]: 0x8a5a24,
-  [GOLD]: 0xe2b84a,
+  [GRASS]: 0x60b347,
+  [DIRT]: 0x9b7653,
+  [STONE]: 0x8b8f96,
+  [WOOD]: 0xa05a2c,
+  [SAND]: 0xf0d060,
+  [LEAVES]: 0x5fd64a,
+  [CHEST]: 0xc47828,
+  [GOLD]: 0xffd24a,
   [NEON]: 0x00e5ff,
-  [DYNAMITE]: 0xd43c2c,
+  [DYNAMITE]: 0xff3b2f,
 };
 
-/** Voxel Minimalist sky / fog — dark graphite-indigo, mobile-cheap. */
-export const SKY_ZENITH = 0x1a1e2e;
-export const SKY_HORIZON = 0x2a3148;
-export const FOG_COLOR = 0x1e2336;
-export const FOG_NEAR = 22;
-export const FOG_FAR = 78;
-export const SUN_COLOR = 0xfff4e8;
-export const WATER_SHALLOW = 0x3d5a6e;
-export const WATER_DEEP = 0x152636;
-export const WATER_FOAM = 0xa8c0cc;
+/** Midday sky — fog matches Sky.js horizon blue. */
+export const SKY_ZENITH = 0x4a90d9;
+export const SKY_HORIZON = 0x87ceeb;
+export const FOG_COLOR = 0x87ceeb;
+export const FOG_NEAR = 50;
+export const FOG_FAR = 180;
+export const SUN_COLOR = 0xffffee;
+export const WATER_SHALLOW = 0x3d8a9e;
+export const WATER_DEEP = 0x1a4a5c;
+export const WATER_FOAM = 0xd8e8ec;
 export const UNDERWATER_FOG = 0x0e1a24;
-/** Cool fill + warm key for soft Lambert shading. */
-export const AMBIENT_COLOR = 0x8aa0c8;
-export const SUN_LIGHT_COLOR = 0xfff8f0;
+export const AMBIENT_COLOR = 0x6a7080;
+export const SUN_LIGHT_COLOR = 0xffffee;
 /** Ortho shadow frustum half-extent around the player (world units). */
-export const SHADOW_EXTENT = 72;
+export const SHADOW_EXTENT = 40;
 export const SHADOW_MAP_SIZE = 2048;
 /** Warm belt lantern — fills night without bleaching nearby voxels. */
 export const LANTERN_COLOR = 0xffaa44;

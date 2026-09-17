@@ -19,6 +19,8 @@ module.exports = {
         PORT: 8080,
         SQLITE_PATH: "data/local.db",
         NITRO_PRESET: "node-server",
+        // Optional: enables HMAC verify on Telegram Login Widget payloads.
+        // TELEGRAM_BOT_TOKEN: "",
       },
     },
   ],

@@ -3,6 +3,7 @@ import { BLOCK_COLORS, CHEST, DIRT, GOLD, GRASS, LEAVES, SAND, STONE, WOOD } fro
 import { PICKAXE_REST } from "./pickaxe";
 import { getItemAtlas, mapItemCubeUVs } from "./textures";
 
+/** Forge draft only — never the in-world held tool. */
 export const FORGE_STORAGE_KEY = "peep.forge.item";
 
 /** One editor cell is this many overlay units in the hand. */
@@ -112,7 +113,9 @@ export type ItemDebugTransform = {
   scale: number;
 };
 
-/** Live rest pose for the overlay item. Примерочная writes here. */
+/**
+ * Forge примерочная pose scratch. Gameplay must use {@link PICKAXE_REST}, not this.
+ */
 export const ITEM_DEBUG: ItemDebugTransform = {
   x: PICKAXE_REST.x,
   y: PICKAXE_REST.y,
@@ -122,6 +125,17 @@ export const ITEM_DEBUG: ItemDebugTransform = {
   rz: PICKAXE_REST.rz,
   scale: PICKAXE_REST.scale,
 };
+
+/** Restore forge scratch pose so leftover примерочная edits cannot leak into play. */
+export function resetItemDebug() {
+  ITEM_DEBUG.x = PICKAXE_REST.x;
+  ITEM_DEBUG.y = PICKAXE_REST.y;
+  ITEM_DEBUG.z = PICKAXE_REST.z;
+  ITEM_DEBUG.rx = PICKAXE_REST.rx;
+  ITEM_DEBUG.ry = PICKAXE_REST.ry;
+  ITEM_DEBUG.rz = PICKAXE_REST.rz;
+  ITEM_DEBUG.scale = PICKAXE_REST.scale;
+}
 
 export function defaultTransform(): ItemTransform {
   return {

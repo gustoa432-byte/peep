@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { ItemEditor } from "@/lib/peep/item-editor";
+import { pushForgeInventoryItem } from "@/lib/peep/forge-inventory";
 import { FORGE_TEMPLATES, templateById } from "@/lib/peep/item-templates";
 import { FORGE_PALETTE_MAX, readForgePalette, rememberForgeColor } from "@/lib/peep/item-palette";
 import {
@@ -12,6 +13,8 @@ import {
   isGoldHex,
   normalizeHex,
   parseItemDocument,
+  resetItemDebug,
+  type ItemDocument,
   type ItemTransform,
 } from "@/lib/peep/item-voxels";
 import { cn } from "@/lib/utils";
@@ -60,9 +63,12 @@ function writeSlider(t: ItemTransform, key: (typeof SLIDERS)[number]["key"], val
 }
 
 export function ItemForge() {
+  const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const editorRef = useRef<ItemEditor | null>(null);
   const gripRef = useRef<HTMLDivElement>(null);
+  /** Forge-only preview — never wired to the in-world hand / hotbar. */
+  const [forgePreviewItem, setForgePreviewItem] = useState<ItemDocument | null>(null);
   const [color, setColor] = useState(DEFAULT_PAINT);
   const [erase, setErase] = useState(false);
   const [mode, setMode] = useState<Mode>("edit");
@@ -73,12 +79,18 @@ export function ItemForge() {
   const [template, setTemplate] = useState("");
   const [palette, setPalette] = useState<string[]>(() => readForgePalette());
 
+  const syncPreview = (editor: ItemEditor) => {
+    const doc = editor.document();
+    setForgePreviewItem(doc);
+    setCount(doc.voxels.length);
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const editor = new ItemEditor(canvas);
-    editor.onChange = () => setCount(editor.voxelsList().length);
-    setCount(editor.voxelsList().length);
+    editor.onChange = () => syncPreview(editor);
+    syncPreview(editor);
     setTransform(editor.getTransform());
     setColor(editor.getColor());
     editorRef.current = editor;
@@ -100,8 +112,26 @@ export function ItemForge() {
       cancelAnimationFrame(frame);
       editor.dispose();
       editorRef.current = null;
+      setForgePreviewItem(null);
+      resetItemDebug();
     };
   }, []);
+
+  const leaveForge = () => {
+    resetItemDebug();
+    setForgePreviewItem(null);
+  };
+
+  const saveAndExit = () => {
+    const editor = editorRef.current;
+    if (editor) {
+      const doc = forgePreviewItem ?? editor.document();
+      editor.persist();
+      if (doc.voxels.length) pushForgeInventoryItem(doc);
+    }
+    leaveForge();
+    void navigate({ to: "/" });
+  };
 
   const pickColor = (next: string) => {
     const hex = isAirColor(next) ? AIR_COLOR : (normalizeHex(next) ?? DEFAULT_PAINT);
@@ -212,7 +242,7 @@ export function ItemForge() {
         Точка хвата
       </div>
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 p-3 sm:p-4">
+      <header className="peep-forge-safe pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 !pb-0">
         <div className="pointer-events-auto flex min-w-0 flex-col gap-2">
           <p className="font-mono text-xs font-medium uppercase tracking-widest text-muted-on-ink">кузница</p>
           <div className="flex rounded-pixel border-2 border-fg-on-ink/20">
@@ -248,9 +278,14 @@ export function ItemForge() {
         <div className="pointer-events-auto flex max-w-[min(100%,22rem)] flex-col items-end gap-2">
           <div className="flex flex-wrap justify-end gap-2">
             <Button asChild variant="ink" className="min-h-11 border-2 border-fg-on-ink/20">
-              <Link to="/">назад в меню</Link>
+              <Link to="/" onClick={leaveForge}>
+                назад в меню
+              </Link>
             </Button>
-            <Button variant="default" className="min-h-11" onClick={() => void copyJson()}>
+            <Button variant="default" className="min-h-11" onClick={saveAndExit}>
+              сохранить и выйти
+            </Button>
+            <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => void copyJson()}>
               {copied ? "скопировано" : "Copy to JSON"}
             </Button>
             <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => void pasteJson()}>
@@ -283,7 +318,7 @@ export function ItemForge() {
 
       <footer
         className={cn(
-          "pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3 sm:p-4",
+          "peep-forge-safe pointer-events-none absolute inset-x-0 bottom-0 z-20 !pt-0",
           mode === "fit" && "right-auto w-full max-w-md",
         )}
       >

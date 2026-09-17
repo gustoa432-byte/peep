@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
+import { isTelegramDesktopPlatform, isTelegramMobilePlatform } from "./telegram";
 
 export type OrientMode = "portrait" | "landscape";
 
 const ORIENT_KEY = "peep.orient";
 
 export function readOrient(): OrientMode {
-  if (typeof window === "undefined") return "portrait";
+  if (typeof window === "undefined") return "landscape";
   try {
-    return localStorage.getItem(ORIENT_KEY) === "landscape" ? "landscape" : "portrait";
+    return localStorage.getItem(ORIENT_KEY) === "portrait" ? "portrait" : "landscape";
   } catch {
-    return "portrait";
+    return "landscape";
   }
 }
 
@@ -66,9 +67,43 @@ export function useMatchMedia(query: string) {
   return hit;
 }
 
-/** Phone or narrow viewport — orientation lock/HUD never apply on desktop. */
+/** True phone / touch-first UI — not a desktop with an optional touchscreen. */
 export function usePhoneUi() {
-  const coarse = useMatchMedia("(pointer: coarse)");
-  const narrow = useMatchMedia("(max-width: 767px)");
-  return coarse || narrow;
+  const [phone, setPhone] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (isTelegramDesktopPlatform()) return false;
+    // TG iOS/Android WebViews often lie about pointer:fine — keep touch HUD.
+    if (isTelegramMobilePlatform()) return true;
+    const fine = window.matchMedia("(pointer: fine)").matches;
+    if (fine) return false;
+    return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 767px)").matches;
+  });
+  useEffect(() => {
+    const fine = window.matchMedia("(pointer: fine)");
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const narrow = window.matchMedia("(max-width: 767px)");
+    const sync = () => {
+      // TG Desktop Mini App must stay on desktop controls (WASD + soft look).
+      if (isTelegramDesktopPlatform()) {
+        setPhone(false);
+        return;
+      }
+      if (isTelegramMobilePlatform()) {
+        setPhone(true);
+        return;
+      }
+      // Mouse/trackpad → always desktop HUD, even on touchscreen laptops.
+      setPhone(fine.matches ? false : coarse.matches || narrow.matches);
+    };
+    sync();
+    fine.addEventListener("change", sync);
+    coarse.addEventListener("change", sync);
+    narrow.addEventListener("change", sync);
+    return () => {
+      fine.removeEventListener("change", sync);
+      coarse.removeEventListener("change", sync);
+      narrow.removeEventListener("change", sync);
+    };
+  }, []);
+  return phone;
 }

@@ -9,6 +9,7 @@ import { nitro } from "nitro/vite";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+// liveRoomsPlugin removed — /live sandbox burned; prod uses P2P only.
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -153,7 +154,8 @@ export default defineConfig(({ command, isPreview }) => ({
   },
   resolve: { tsconfigPaths: true },
   ssr: {
-    external: ["better-sqlite3"],
+    external: ["better-sqlite3", "bindings", "file-uri-to-path", "ws"],
+    noExternal: [],
   },
   plugins: [
     sqliteBootstrapPlugin(),

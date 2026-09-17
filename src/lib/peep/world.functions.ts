@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { getSql } from "@/lib/db";
 import {
+  ISLAND_SLUG_RE,
+  MAX_WORLDS_PER_ACCOUNT,
   MAX_PLAYERS,
   PRESENCE_TTL_SECONDS,
   RATE_MAX_EDITS,
@@ -33,13 +35,54 @@ const blockCoord = z.object({
   x: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
   y: z.number().int().min(0).max(WORLD_SY - 1),
   z: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
-  block: z.number().int().min(0).max(10),
+  block: z.number().int().min(0).max(11),
 });
+
+const optionalName = z.string().max(48).optional();
+const optionalSlug = z.string().max(24).optional();
 
 const ALPH = "abcdefghjkmnpqrstuvwxyz23456789";
 
 function nowMs(): number {
   return Date.now();
+}
+
+/** All player ids that count as the same account (browser ↔ Telegram link). */
+async function playerIdAliases(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  playerId: string,
+): Promise<string[]> {
+  const ids = new Set<string>([playerId]);
+  try {
+    if (playerId.startsWith("tg_")) {
+      const browsers = await sql.query<{ browser_player_id: string }>(
+        `select browser_player_id from peep_account_links where tg_player_id = $1`,
+        [playerId],
+      );
+      for (const r of browsers) ids.add(r.browser_player_id);
+    } else {
+      const link = await sql.query<{ tg_player_id: string }>(
+        `select tg_player_id from peep_account_links where browser_player_id = $1 limit 1`,
+        [playerId],
+      );
+      const tg = link[0]?.tg_player_id;
+      if (tg) {
+        ids.add(tg);
+        const browsers = await sql.query<{ browser_player_id: string }>(
+          `select browser_player_id from peep_account_links where tg_player_id = $1`,
+          [tg],
+        );
+        for (const r of browsers) ids.add(r.browser_player_id);
+      }
+    }
+  } catch {
+    /* table may be missing on old deploys — ignore */
+  }
+  return [...ids];
+}
+
+function placeholders(n: number, start = 1): string {
+  return Array.from({ length: n }, (_, i) => `$${start + i}`).join(", ");
 }
 
 function isUniqueError(err: unknown): boolean {
@@ -63,6 +106,33 @@ function newWorldId(): string {
 async function prunePresence(sql: Awaited<ReturnType<typeof getSql>>, id: string) {
   const cutoff = nowMs() - PRESENCE_TTL_SECONDS * 1000;
   await sql.query(`delete from peep_presence where world_id = $1 and last_seen < $2`, [id, cutoff]);
+  // Free Friday slots if claimed guests timed out.
+  await sql.query(
+    `update peep_worlds
+     set guest_id = null
+     where id = $1
+       and guest_id is not null
+       and not exists (
+         select 1 from peep_presence p
+         where p.world_id = peep_worlds.id
+           and p.player_id = peep_worlds.guest_id
+           and p.last_seen > $2
+       )`,
+    [id, cutoff],
+  );
+  await sql.query(
+    `update peep_worlds
+     set guest_id_2 = null
+     where id = $1
+       and guest_id_2 is not null
+       and not exists (
+         select 1 from peep_presence p
+         where p.world_id = peep_worlds.id
+           and p.player_id = peep_worlds.guest_id_2
+           and p.last_seen > $2
+       )`,
+    [id, cutoff],
+  );
 }
 
 type WorldRow = {
@@ -70,6 +140,8 @@ type WorldRow = {
   cursor: number;
   generation: number;
   creatorId: string | null;
+  guestId: string | null;
+  guestId2: string | null;
 };
 
 async function readWorld(
@@ -81,7 +153,12 @@ async function readWorld(
     edit_cursor: number | null;
     generation: number | null;
     creator_id: string | null;
-  }>(`select seed, edit_cursor, generation, creator_id from peep_worlds where id = $1`, [id]);
+    guest_id: string | null;
+    guest_id_2: string | null;
+  }>(
+    `select seed, edit_cursor, generation, creator_id, guest_id, guest_id_2 from peep_worlds where id = $1`,
+    [id],
+  );
   const row = rows[0];
   if (!row) return null;
   return {
@@ -89,7 +166,34 @@ async function readWorld(
     cursor: Number(row.edit_cursor ?? 0),
     generation: Number(row.generation ?? 0),
     creatorId: row.creator_id,
+    guestId: row.guest_id ?? null,
+    guestId2: row.guest_id_2 ?? null,
   };
+}
+
+/** Claim one of two Friday slots atomically. */
+async function claimGuestSlot(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  worldId: string,
+  playerId: string,
+): Promise<boolean> {
+  const slot1 = await sql.query<{ guest_id: string }>(
+    `update peep_worlds
+     set guest_id = $2
+     where id = $1 and (guest_id is null or guest_id = $2)
+     returning guest_id`,
+    [worldId, playerId],
+  );
+  if (slot1[0]?.guest_id === playerId) return true;
+
+  const slot2 = await sql.query<{ guest_id_2: string }>(
+    `update peep_worlds
+     set guest_id_2 = $2
+     where id = $1 and (guest_id_2 is null or guest_id_2 = $2)
+     returning guest_id_2`,
+    [worldId, playerId],
+  );
+  return slot2[0]?.guest_id_2 === playerId;
 }
 
 async function recordEvent(
@@ -153,27 +257,197 @@ async function loadHostPerms(
 }
 
 export const createWorld = createServerFn({ method: "POST" })
-  .validator(z.object({ playerId }))
-  .handler(async ({ data }): Promise<{ id: string; seed: number }> => {
+  .validator(
+    z.object({
+      playerId,
+      name: optionalName,
+      slug: optionalSlug,
+    }),
+  )
+  .handler(
+    async ({
+      data,
+    }): Promise<{ id: string; seed: number; name: string | null; slug: string | null }> => {
+      const sql = await getSql();
+      const probe = await sql.query<{ n: number }>(
+        `select count(*) as n from sqlite_master where type = 'table' and name = 'peep_worlds'`,
+      );
+      if (!probe[0] || Number(probe[0].n) < 1) {
+        throw new Error("SQLite schema missing peep_worlds — migration did not apply");
+      }
+
+      const aliases = await playerIdAliases(sql, data.playerId);
+      if (data.playerId === "p-tgpending" || data.playerId === "p-ssr") {
+        throw new Error("Telegram ещё загружается — подожди секунду");
+      }
+      const owned = await sql.query<{ n: number }>(
+        `select count(*) as n from peep_worlds where creator_id in (${placeholders(aliases.length)})`,
+        aliases,
+      );
+      if (Number(owned[0]?.n ?? 0) >= MAX_WORLDS_PER_ACCOUNT) {
+        throw new Error(`Лимит: максимум ${MAX_WORLDS_PER_ACCOUNT} мира на аккаунт`);
+      }
+
+      const nameRaw = data.name?.trim() ?? "";
+      const slugRaw = data.slug?.trim().toLowerCase() ?? "";
+      const name = nameRaw.length > 0 ? nameRaw.slice(0, 48) : null;
+      const slug = slugRaw.length > 0 ? slugRaw : null;
+      if (slug && !ISLAND_SLUG_RE.test(slug)) {
+        throw new Error("ID острова: латиница, 3–24 символа (a-z, 0-9, _-)");
+      }
+      if (slug) {
+        const clash = await sql.query<{ id: string }>(
+          `select id from peep_worlds where lower(slug) = $1 limit 1`,
+          [slug],
+        );
+        if (clash[0]) throw new Error("Такой ID острова уже занят");
+      }
+
+      const seed = (crypto.getRandomValues(new Uint32Array(1))[0] ?? 1) % 1_000_000_000;
+      let lastErr: unknown;
+      for (let i = 0; i < 6; i++) {
+        const id = newWorldId();
+        try {
+          await sql.query(
+            `insert into peep_worlds (id, seed, creator_id, name, slug) values ($1, $2, $3, $4, $5)`,
+            [id, seed, data.playerId, name, slug],
+          );
+          await recordEvent(sql, "create", id, data.playerId);
+          return { id, seed, name, slug };
+        } catch (err) {
+          lastErr = err;
+          if (isUniqueError(err)) continue;
+          console.error("[peep] createWorld insert failed:", err);
+          throw err;
+        }
+      }
+      console.error("[peep] createWorld exhausted ids:", lastErr);
+      throw new Error("Could not create world");
+    },
+  );
+
+/** Resolve system id or vanity slug → canonical world id. */
+export const resolveWorldId = createServerFn({ method: "GET" })
+  .validator(z.object({ code: z.string().trim().min(1).max(64) }))
+  .handler(async ({ data }): Promise<{ id: string } | { error: "not_found" }> => {
     const sql = await getSql();
-    const seed = (crypto.getRandomValues(new Uint32Array(1))[0] ?? 1) % 1_000_000_000;
-    for (let i = 0; i < 6; i++) {
-      const id = newWorldId();
+    const code = data.code.trim().toLowerCase();
+    if (WORLD_ID_RE.test(code)) {
+      const rows = await sql.query<{ id: string }>(`select id from peep_worlds where id = $1`, [code]);
+      if (rows[0]) return { id: rows[0].id };
+    }
+    const bySlug = await sql.query<{ id: string }>(
+      `select id from peep_worlds where lower(slug) = $1 limit 1`,
+      [code],
+    );
+    if (bySlug[0]) return { id: bySlug[0].id };
+    return { error: "not_found" };
+  });
+
+/** Worlds this player created — source of truth after server restart. */
+export const listOwnedWorlds = createServerFn({ method: "GET" })
+  .validator(z.object({ playerId }))
+  .handler(
+    async ({
+      data,
+    }): Promise<Array<{ id: string; name: string | null; slug: string | null; createdAt: number }>> => {
+      const sql = await getSql();
+      const aliases = await playerIdAliases(sql, data.playerId);
+      // Self-heal: after TG link, fold browser-owned worlds onto tg_* creator.
+      const tgCanon = aliases.find((a) => a.startsWith("tg_"));
+      if (tgCanon) {
+        for (const a of aliases) {
+          if (a === tgCanon) continue;
+          await sql.query(`update peep_worlds set creator_id = $1 where creator_id = $2`, [
+            tgCanon,
+            a,
+          ]);
+        }
+      }
+      const rows = await sql.query<{
+        id: string;
+        name: string | null;
+        slug: string | null;
+        created_at: number;
+      }>(
+        `select id, name, slug, created_at from peep_worlds
+         where creator_id in (${placeholders(aliases.length)})
+         order by created_at desc`,
+        aliases,
+      );
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        createdAt: Number(r.created_at) || 0,
+      }));
+    },
+  );
+
+export const updateWorldMeta = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      worldId,
+      playerId,
+      name: optionalName,
+      slug: optionalSlug,
+    }),
+  )
+  .handler(
+    async ({
+      data,
+    }): Promise<{ ok: true; name: string | null; slug: string | null } | { ok: false; error: string }> => {
+      const sql = await getSql();
+      const world = await readWorld(sql, data.worldId);
+      if (!world) return { ok: false, error: "not_found" };
+      const aliases = await playerIdAliases(sql, data.playerId);
+      if (!world.creatorId || !aliases.includes(world.creatorId)) {
+        return { ok: false, error: "forbidden" };
+      }
+
+      const nameRaw = data.name?.trim() ?? "";
+      const slugRaw = data.slug?.trim().toLowerCase() ?? "";
+      const name = nameRaw.length > 0 ? nameRaw.slice(0, 48) : null;
+      const slug = slugRaw.length > 0 ? slugRaw : null;
+      if (slug && !ISLAND_SLUG_RE.test(slug)) return { ok: false, error: "slug_invalid" };
+      if (slug) {
+        const clash = await sql.query<{ id: string }>(
+          `select id from peep_worlds where lower(slug) = $1 and id != $2 limit 1`,
+          [slug, data.worldId],
+        );
+        if (clash[0]) return { ok: false, error: "slug_taken" };
+      }
+
       try {
-        await sql.query(`insert into peep_worlds (id, seed, creator_id) values ($1, $2, $3)`, [
-          id,
-          seed,
-          data.playerId,
+        await sql.query(`update peep_worlds set name = $1, slug = $2 where id = $3`, [
+          name,
+          slug,
+          data.worldId,
         ]);
-        await recordEvent(sql, "create", id, data.playerId);
-        return { id, seed };
       } catch (err) {
-        if (isUniqueError(err)) continue;
+        if (isUniqueError(err)) return { ok: false, error: "slug_taken" };
         throw err;
       }
-    }
-    throw new Error("Could not create world");
-  });
+      return { ok: true, name, slug };
+    },
+  );
+
+export const getWorldMeta = createServerFn({ method: "GET" })
+  .validator(z.object({ worldId }))
+  .handler(
+    async ({
+      data,
+    }): Promise<{ name: string | null; slug: string | null } | { error: "not_found" }> => {
+      const sql = await getSql();
+      const rows = await sql.query<{ name: string | null; slug: string | null }>(
+        `select name, slug from peep_worlds where id = $1`,
+        [data.worldId],
+      );
+      const row = rows[0];
+      if (!row) return { error: "not_found" };
+      return { name: row.name ?? null, slug: row.slug ?? null };
+    },
+  );
 
 export const joinWorld = createServerFn({ method: "POST" })
   .validator(z.object({ worldId, playerId }))
@@ -200,11 +474,16 @@ export const joinWorld = createServerFn({ method: "POST" })
       creatorId = data.playerId;
     }
 
-    const isCreator = creatorId === data.playerId;
+    const aliases = await playerIdAliases(sql, data.playerId);
+    const isCreator = Boolean(creatorId && aliases.includes(creatorId));
     const perms = await loadHostPerms(sql, creatorId);
     if (!isCreator) {
       if (perms.locked) return { ok: false, error: "locked" };
       if (perms.banned.includes(data.playerId)) return { ok: false, error: "banned" };
+      // Atomic Friday claim — up to two guest slots.
+      if (!(await claimGuestSlot(sql, data.worldId, data.playerId))) {
+        return { ok: false, error: "occupied" };
+      }
     }
 
     await sql.query(
@@ -252,8 +531,9 @@ export const applyEdit = createServerFn({ method: "POST" })
     const sql = await getSql();
     const world = await readWorld(sql, data.worldId);
     if (!world) return { ok: false, error: "not_found" };
-    if (world.creatorId && world.creatorId !== data.playerId) {
-      return { ok: false, error: "forbidden" };
+    if (world.creatorId) {
+      const aliases = await playerIdAliases(sql, data.playerId);
+      if (!aliases.includes(world.creatorId)) return { ok: false, error: "forbidden" };
     }
     if (!(await takeRateSlot(sql, data.playerId))) return { ok: false, error: "rate" };
 
@@ -386,30 +666,143 @@ export const leaveWorld = createServerFn({ method: "POST" })
       data.worldId,
       data.playerId,
     ]);
+    await sql.query(`update peep_worlds set guest_id = null where id = $1 and guest_id = $2`, [
+      data.worldId,
+      data.playerId,
+    ]);
+    await sql.query(`update peep_worlds set guest_id_2 = null where id = $1 and guest_id_2 = $2`, [
+      data.worldId,
+      data.playerId,
+    ]);
     return { ok: true as const };
   });
 
 export const deleteWorld = createServerFn({ method: "POST" })
-  .validator(z.object({ worldId, playerId }))
-  .handler(async ({ data }): Promise<{ ok: true } | { ok: false }> => {
-    const sql = await getSql();
-    const world = await readWorld(sql, data.worldId);
-    if (!world || world.creatorId !== data.playerId) return { ok: false };
-    try {
-      await sql.query(`delete from peep_events where world_id = $1`, [data.worldId]);
-    } catch {
-      /* ignore */
-    }
-    await sql.query(`delete from peep_worlds where id = $1`, [data.worldId]);
-    return { ok: true };
-  });
+  .validator(
+    z.object({
+      worldId,
+      playerId,
+      /** Mini App localStorage `p-*` minted before Telegram user id was ready. */
+      legacyPlayerId: playerId.optional(),
+    }),
+  )
+  .handler(
+    async ({
+      data,
+    }): Promise<{ ok: true } | { ok: false; error: "not_found" | "forbidden" }> => {
+      const sql = await getSql();
+      const world = await readWorld(sql, data.worldId);
+      if (!world) {
+        // Drop stale TG snapshot pointers so the menu doesn't resurrect ghosts.
+        if (data.playerId.startsWith("tg_")) {
+          try {
+            await sql.query(
+              `update peep_tg_saves set world_id = null, updated_at = $2 where tg_user_id = $1 and world_id = $3`,
+              [data.playerId, nowMs(), data.worldId],
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        return { ok: true };
+      }
+
+      // Fold WebView race id → tg_* before ownership check.
+      const legacy = data.legacyPlayerId;
+      if (
+        legacy &&
+        legacy.startsWith("p-") &&
+        legacy !== "p-tgpending" &&
+        legacy !== "p-ssr" &&
+        data.playerId.startsWith("tg_")
+      ) {
+        try {
+          const existing = await sql.query<{ tg_player_id: string }>(
+            `select tg_player_id from peep_account_links where browser_player_id = $1 limit 1`,
+            [legacy],
+          );
+          const linked = existing[0]?.tg_player_id;
+          if (!linked || linked === data.playerId) {
+            await sql.query(
+              `insert into peep_account_links (browser_player_id, tg_player_id, linked_at)
+               values ($1, $2, $3)
+               on conflict(browser_player_id) do update set
+                 tg_player_id = excluded.tg_player_id,
+                 linked_at = excluded.linked_at`,
+              [legacy, data.playerId, nowMs()],
+            );
+            await sql.query(`update peep_worlds set creator_id = $1 where creator_id = $2`, [
+              data.playerId,
+              legacy,
+            ]);
+            await sql.query(`update peep_worlds set guest_id = $1 where guest_id = $2`, [
+              data.playerId,
+              legacy,
+            ]);
+            await sql.query(`update peep_worlds set guest_id_2 = $1 where guest_id_2 = $2`, [
+              data.playerId,
+              legacy,
+            ]);
+          }
+        } catch {
+          /* links table may be missing on old deploys */
+        }
+      }
+
+      let aliases = await playerIdAliases(sql, data.playerId);
+      const tgCanon = aliases.find((a) => a.startsWith("tg_"));
+      if (tgCanon) {
+        for (const a of aliases) {
+          if (a === tgCanon) continue;
+          await sql.query(`update peep_worlds set creator_id = $1 where creator_id = $2`, [
+            tgCanon,
+            a,
+          ]);
+        }
+        aliases = await playerIdAliases(sql, data.playerId);
+      }
+
+      const fresh = await readWorld(sql, data.worldId);
+      const creatorId = fresh?.creatorId ?? world.creatorId;
+      if (!creatorId || !aliases.includes(creatorId)) {
+        // Not the owner — clear this player's TG save pointer if it pinned the card.
+        if (data.playerId.startsWith("tg_")) {
+          try {
+            await sql.query(
+              `update peep_tg_saves set world_id = null, updated_at = $2 where tg_user_id = $1 and world_id = $3`,
+              [data.playerId, nowMs(), data.worldId],
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        return { ok: false, error: "forbidden" };
+      }
+
+      const purge = async (q: string, params: unknown[] = [data.worldId]) => {
+        try {
+          await sql.query(q, params);
+        } catch {
+          /* related table may be missing */
+        }
+      };
+      await purge(`delete from peep_events where world_id = $1`);
+      await purge(`delete from peep_edits where world_id = $1`);
+      await purge(`delete from peep_presence where world_id = $1`);
+      await purge(`delete from peep_tg_saves where world_id = $1`);
+      await sql.query(`delete from peep_worlds where id = $1`, [data.worldId]);
+      return { ok: true };
+    },
+  );
 
 export const resetWorld = createServerFn({ method: "POST" })
   .validator(z.object({ worldId, playerId }))
   .handler(async ({ data }): Promise<{ ok: true; generation: number } | { ok: false }> => {
     const sql = await getSql();
     const world = await readWorld(sql, data.worldId);
-    if (!world || world.creatorId !== data.playerId) return { ok: false };
+    if (!world) return { ok: false };
+    const aliases = await playerIdAliases(sql, data.playerId);
+    if (!world.creatorId || !aliases.includes(world.creatorId)) return { ok: false };
     await sql.query(`delete from peep_edits where world_id = $1`, [data.worldId]);
     const bumped = await sql.query<{ generation: number }>(
       `update peep_worlds set generation = generation + 1, edit_cursor = 0 where id = $1 returning generation`,
@@ -462,6 +855,18 @@ export const updateGuestPermissions = createServerFn({ method: "POST" })
     if (data.patch.buildAllowed !== undefined) perms.buildAllowed = data.patch.buildAllowed;
     if (data.patch.banPlayerId) {
       if (!perms.banned.includes(data.patch.banPlayerId)) perms.banned.push(data.patch.banPlayerId);
+      // Free the Friday slot so a new guest can claim after kick.
+      await sql.query(
+        `update peep_worlds set guest_id = null where creator_id = $1 and guest_id = $2`,
+        [data.playerId, data.patch.banPlayerId],
+      );
+      await sql.query(
+        `update peep_worlds set guest_id_2 = null where creator_id = $1 and guest_id_2 = $2`,
+        [data.playerId, data.patch.banPlayerId],
+      );
+      await sql.query(`delete from peep_presence where player_id = $1 and world_id in (
+        select id from peep_worlds where creator_id = $2
+      )`, [data.patch.banPlayerId, data.playerId]);
     }
     if (data.patch.unbanPlayerId) {
       perms.banned = perms.banned.filter((id) => id !== data.patch.unbanPlayerId);

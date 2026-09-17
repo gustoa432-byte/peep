@@ -21,9 +21,11 @@ function rand(a: number, b: number): number {
   return a + Math.random() * (b - a);
 }
 
+const FART_SAMPLES = ["fart-long", "fart-bunch", "fart-farts"] as const;
+
 /**
- * Web Audio synthesis, no files (TZ §3.6). Noise + a fast envelope carries
- * physicality; a sine is only a quiet layer under join / emotes, never a beep.
+ * Web Audio: procedural noise for footsteps/ambient, plus real sample files
+ * for fart / angry (dolphin) / TNT boom (`/sfx/*`, see CREDITS).
  */
 export class PeepAudio {
   private ctx: AudioContext | null = null;
@@ -32,6 +34,9 @@ export class PeepAudio {
   private amb: GainNode | null = null;
   private white: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
+  private samples = new Map<string, AudioBuffer>();
+  private sampleLoading: Promise<void> | null = null;
+  private lastFartSample = -1;
   private ocean: AudioBufferSourceNode | null = null;
   private wind: AudioBufferSourceNode | null = null;
   private oceanPan: StereoPannerNode | null = null;
@@ -50,6 +55,7 @@ export class PeepAudio {
     this.ensure();
     const ctx = this.ctx;
     if (ctx && ctx.state === "suspended") void ctx.resume();
+    void this.ensureSamples();
   }
 
   startAmbient() {
@@ -202,6 +208,30 @@ export class PeepAudio {
     });
   }
 
+  /** Quiet underwater bubble for troll-quest sector ticks. */
+  bubble() {
+    this.unlock();
+    this.burst({
+      buf: "white",
+      dur: 0.07,
+      gain: 0.08,
+      freq: 880,
+      q: 1.2,
+      type: "bandpass",
+      rate: rand(0.85, 1.2),
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.05,
+      gain: 0.05,
+      freq: 1400,
+      q: 0.8,
+      type: "highpass",
+      rate: rand(1.05, 1.35),
+      delay: 0.04,
+    });
+  }
+
   /** First tap: the cell is chosen. Quiet, sharp, not a place. */
   intent() {
     this.unlock();
@@ -273,6 +303,100 @@ export class PeepAudio {
     });
   }
 
+  /** Dynamite fuse — soft high hiss. */
+  hiss() {
+    this.unlock();
+    this.burst({
+      buf: "white",
+      dur: 0.09,
+      gain: 0.14,
+      freq: 3200,
+      q: 0.7,
+      type: "highpass",
+      rate: rand(0.95, 1.15),
+    });
+  }
+
+  /** Dynamite detonation — real explosion sample (fallback: synth boom). */
+  boom() {
+    this.unlock();
+    void this.withSample("boom", { gain: 1.25, maxDur: 3.5 }, () => this.boomSynth());
+  }
+
+  private boomSynth() {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+
+    this.burst({
+      buf: "brown",
+      dur: 0.55,
+      gain: 0.85,
+      freq: 55,
+      q: 0.45,
+      type: "lowpass",
+      rate: 0.42,
+    });
+    this.burst({
+      buf: "brown",
+      dur: 0.32,
+      gain: 0.62,
+      freq: 110,
+      q: 0.7,
+      type: "lowpass",
+      rate: 0.55,
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.18,
+      gain: 0.55,
+      freq: 380,
+      q: 0.9,
+      type: "bandpass",
+      rate: 0.65,
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.1,
+      gain: 0.42,
+      freq: 1600,
+      q: 1.4,
+      type: "highpass",
+      rate: 1.05,
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.35,
+      gain: 0.22,
+      freq: 2400,
+      q: 0.6,
+      type: "highpass",
+      rate: 0.9,
+      delay: 0.06,
+    });
+
+    try {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(140, t);
+      osc.frequency.exponentialRampToValueAtTime(38, t + 0.28);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.55, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.32);
+      osc.connect(g);
+      g.connect(this.sfx!);
+      osc.start(t);
+      osc.stop(t + 0.34);
+      osc.onended = () => {
+        osc.disconnect();
+        g.disconnect();
+      };
+    } catch {
+      /* ignore */
+    }
+  }
+
   join() {
     this.unlock();
     this.burst({ buf: "white", dur: 0.22, gain: 0.16, freq: 420, q: 0.9, type: "bandpass", rate: 0.7 });
@@ -286,14 +410,191 @@ export class PeepAudio {
       this.burst({ buf: "white", dur: 0.14, gain: 0.12, freq: 900, q: 0.8, type: "highpass", sweep: 1.4 });
       this.tone(660, 0.16, 0.022);
     } else if (kind === "hearts") {
-      this.tone(523, 0.18, 0.028);
-      this.tone(659, 0.22, 0.024, 0.07);
-      this.burst({ buf: "white", dur: 0.12, gain: 0.1, freq: 1200, q: 1.2, type: "bandpass" });
+      void this.withSample("love", { gain: 1.1, maxDur: 3 }, () => this.heartsSynth());
+    } else if (kind === "fart") {
+      void this.withRandomSample(FART_SAMPLES, { gain: 1.35 }, () => this.fartSynth());
+    } else if (kind === "censor") {
+      void this.withSample("censor", { gain: 1.05, maxDur: 2.5 }, () => this.censorSynth());
+    } else if (kind === "death") {
+      void this.withSample("death", { gain: 1.15, maxDur: 3.5 }, () => this.deathSynth());
+    } else if (kind === "attention") {
+      void this.withSample("attention", { gain: 1.1, maxDur: 6 }, () => this.attentionSynth());
+    } else if (kind === "sixSeven") {
+      void this.withSample("sixSeven", { gain: 1.15, maxDur: 4 }, () => this.sixSevenSynth());
     } else {
       this.burst({ buf: "white", dur: 0.08, gain: 0.16, freq: 380, q: 1.1, type: "bandpass", rate: 1.1 });
       this.burst({ buf: "white", dur: 0.08, gain: 0.14, freq: 420, q: 1.1, type: "bandpass", rate: 1.2, delay: 0.09 });
       this.burst({ buf: "white", dur: 0.1, gain: 0.12, freq: 360, q: 1, type: "bandpass", rate: 0.95, delay: 0.18 });
     }
+  }
+
+  private heartsSynth() {
+    this.tone(523, 0.18, 0.028);
+    this.tone(659, 0.22, 0.024, 0.07);
+    this.burst({ buf: "white", dur: 0.12, gain: 0.1, freq: 1200, q: 1.2, type: "bandpass" });
+  }
+
+  private fartSynth() {
+    this.burst({
+      buf: "brown",
+      dur: 0.22,
+      gain: 0.42,
+      freq: 90,
+      q: 0.7,
+      type: "lowpass",
+      rate: 0.55,
+    });
+    this.burst({
+      buf: "brown",
+      dur: 0.16,
+      gain: 0.28,
+      freq: 160,
+      q: 1.1,
+      type: "bandpass",
+      rate: 0.7,
+      delay: 0.05,
+    });
+    this.burst({
+      buf: "white",
+      dur: 0.08,
+      gain: 0.12,
+      freq: 420,
+      q: 0.8,
+      type: "lowpass",
+      rate: 0.85,
+      delay: 0.1,
+    });
+  }
+
+  private censorSynth() {
+    this.tone(1000, 0.5, 0.08);
+  }
+
+  private deathSynth() {
+    this.burst({ buf: "brown", dur: 0.35, gain: 0.35, freq: 70, q: 0.6, type: "lowpass", rate: 0.45 });
+    this.tone(110, 0.4, 0.05);
+    this.tone(82, 0.55, 0.04, 0.12);
+  }
+
+  private attentionSynth() {
+    this.tone(880, 0.12, 0.04);
+    this.tone(1175, 0.16, 0.035, 0.08);
+    this.tone(880, 0.12, 0.04, 0.18);
+  }
+
+  private sixSevenSynth() {
+    this.tone(523, 0.14, 0.035);
+    this.tone(659, 0.16, 0.03, 0.08);
+    this.tone(784, 0.2, 0.028, 0.16);
+  }
+
+  private async withSample(
+    name: string,
+    opts: { gain?: number; maxDur?: number; rate?: number },
+    fallback: () => void,
+  ) {
+    await this.ensureSamples();
+    if (!this.playSample(name, opts)) fallback();
+  }
+
+  private async withRandomSample(
+    names: readonly string[],
+    opts: { gain?: number; maxDur?: number; rate?: number },
+    fallback: () => void,
+  ) {
+    await this.ensureSamples();
+    const loaded = names.filter((n) => this.samples.has(n));
+    if (loaded.length === 0) {
+      fallback();
+      return;
+    }
+    let idx: number;
+    do {
+      idx = Math.floor(Math.random() * loaded.length);
+    } while (idx === this.lastFartSample && loaded.length > 1);
+    this.lastFartSample = idx;
+    if (!this.playSample(loaded[idx]!, opts)) fallback();
+  }
+
+  private playSample(
+    name: string,
+    opts: { gain?: number; maxDur?: number; rate?: number } = {},
+  ): boolean {
+    const ctx = this.ctx;
+    const bus = this.sfx;
+    const buf = this.samples.get(name);
+    if (!ctx || !bus || !buf) {
+      void this.ensureSamples();
+      return false;
+    }
+    try {
+      const src = ctx.createBufferSource();
+      const g = ctx.createGain();
+      src.buffer = buf;
+      src.playbackRate.value = opts.rate ?? 1;
+      const gain = opts.gain ?? 1;
+      const t = ctx.currentTime;
+      g.gain.setValueAtTime(gain, t);
+      const maxDur = opts.maxDur;
+      if (maxDur != null && maxDur > 0 && buf.duration > maxDur) {
+        g.gain.setValueAtTime(gain, t + maxDur * 0.72);
+        g.gain.linearRampToValueAtTime(0.0001, t + maxDur);
+        src.start(t, 0, maxDur);
+        src.stop(t + maxDur + 0.02);
+      } else {
+        src.start(t);
+      }
+      src.connect(g);
+      g.connect(bus);
+      src.onended = () => {
+        try {
+          src.disconnect();
+          g.disconnect();
+        } catch {
+          /* ignore */
+        }
+      };
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private ensureSamples(): Promise<void> {
+    if (this.sampleLoading) return this.sampleLoading;
+    this.ensure();
+    const ctx = this.ctx;
+    if (!ctx) return Promise.resolve();
+    const files: Record<string, string> = {
+      "fart-long": "/sfx/fart-long.ogg",
+      "fart-bunch": "/sfx/fart-bunch.ogg",
+      "fart-farts": "/sfx/fart-farts.ogg",
+      censor: "/sfx/dolphin.mp3",
+      love: "/sfx/love.mp3",
+      death: "/sfx/death.mp3",
+      attention: "/sfx/oh.mp3",
+      sixSeven: "/sfx/67.mp3",
+      boom: "/sfx/boom.wav",
+    };
+    this.sampleLoading = (async () => {
+      await Promise.all(
+        Object.entries(files).map(async ([key, url]) => {
+          if (this.samples.has(key)) return;
+          try {
+            const res = await fetch(url);
+            if (!res.ok) return;
+            const raw = await res.arrayBuffer();
+            const buf = await ctx.decodeAudioData(raw.slice(0));
+            this.samples.set(key, buf);
+          } catch {
+            /* keep synth fallback */
+          }
+        }),
+      );
+      // Allow retry if nothing landed (slow network / first paint).
+      if (this.samples.size < Object.keys(files).length) this.sampleLoading = null;
+    })();
+    return this.sampleLoading;
   }
 
   private ensure() {

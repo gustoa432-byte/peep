@@ -4,8 +4,8 @@
  * Nitro listens on HOST + PORT.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, isAbsolute, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +18,12 @@ if (!process.env.PORT && !process.env.NITRO_PORT) {
 }
 if (!process.env.SQLITE_PATH?.trim()) {
   process.env.SQLITE_PATH = "data/local.db";
+}
+
+{
+  const raw = process.env.SQLITE_PATH;
+  const abs = isAbsolute(raw) ? raw : join(root, raw);
+  mkdirSync(dirname(abs), { recursive: true });
 }
 
 const migrated = spawnSync(process.execPath, [join(here, "migrate.mjs")], {

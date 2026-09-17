@@ -16,6 +16,7 @@ import {
   normalizeHex,
   normalizePaint,
   readStoredDocument,
+  resetItemDebug,
   tickGoldObject,
   writeStoredDocument,
   type ItemDocument,
@@ -356,6 +357,7 @@ export class ItemEditor {
     }
     for (const mat of this.mats.values()) mat.dispose();
     this.renderer.dispose();
+    resetItemDebug();
   }
 
   private wipe() {

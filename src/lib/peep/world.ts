@@ -45,6 +45,20 @@ export function onIsland(x: number, z: number): boolean {
   return x >= 0 && x < WORLD_SX && z >= 0 && z < WORLD_SZ;
 }
 
+/** Normalized radial distance from island center (1 ≈ half WORLD extent). */
+export function islandRadialNorm(x: number, z: number): number {
+  const cx = (WORLD_SX - 1) * 0.5;
+  const cz = (WORLD_SZ - 1) * 0.5;
+  const nx = (x - cx) / (WORLD_SX * 0.5);
+  const nz = (z - cz) / (WORLD_SZ * 0.5);
+  return Math.hypot(nx, nz);
+}
+
+/** True past the sandy shore — open ocean (quest start / lap ring). */
+export function pastIslandShore(x: number, z: number): boolean {
+  return islandRadialNorm(x, z) >= ISLAND_SHORE;
+}
+
 export function hash2(x: number, z: number, seed: number): number {
   let n = Math.imul(x + seed * 13, 374761393) ^ Math.imul(z + seed * 7, 668265263);
   n = Math.imul(n ^ (n >>> 13), 1274126177);
@@ -214,23 +228,32 @@ export class VoxelWorld {
     }
   }
 
+  /**
+   * Block at world (x,y,z). Always resolves the owning chunk via ensureChunk —
+   * AO / face culling on chunk borders correctly see neighbors (never "empty
+   * because the other chunk isn't the one being meshed").
+   */
   get(x: number, y: number, z: number): number {
     if (!inBounds(x, y, z)) return AIR;
     const { cx, cz } = chunkOf(x, z);
     const data = this.ensureChunk(cx, cz);
-    const lx = x - cx * CHUNK_S;
-    const lz = z - cz * CHUNK_S;
+    const lx = ((x % CHUNK_S) + CHUNK_S) % CHUNK_S;
+    const lz = ((z % CHUNK_S) + CHUNK_S) % CHUNK_S;
     return data[localIdx(lx, y, lz)] ?? AIR;
   }
 
-  set(x: number, y: number, z: number, block: number): boolean {
+  set(x: number, y: number, z: number, block: number, overwrite = false): boolean {
     if (!inBounds(x, y, z)) return false;
     if (y === 0 && block === AIR) return false;
     const { cx, cz } = chunkOf(x, z);
     const data = this.ensureChunk(cx, cz);
     const lx = x - cx * CHUNK_S;
     const lz = z - cz * CHUNK_S;
-    data[localIdx(lx, y, lz)] = block;
+    const idx = localIdx(lx, y, lz);
+    const prev = data[idx] ?? AIR;
+    // Hard rule: never plant a solid inside another solid (z-fight / duplicate cell).
+    if (!overwrite && block !== AIR && prev !== AIR) return false;
+    data[idx] = block;
     this.edits.set(editKey(x, y, z), block);
     return true;
   }

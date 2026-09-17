@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Settings } from "lucide-react";
+import { Hammer, Play, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function Pixel({
@@ -30,8 +30,35 @@ function Dots({ cells }: { cells: string }) {
 
 export function IconJump({ className }: { className?: string }) {
   return (
+    <svg
+      viewBox="0 0 24 24"
+      className={cn("size-4 shrink-0", className)}
+      fill="none"
+      aria-hidden
+    >
+      <path
+        d="M5 13.5 L12 6.5 L19 13.5"
+        stroke="#3dce4a"
+        strokeWidth="3.2"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
+      <path
+        d="M5 19.5 L12 12.5 L19 19.5"
+        stroke="#2fad3c"
+        strokeWidth="3.2"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
+    </svg>
+  );
+}
+
+/** Chest / backpack glyph for the inventory hotbar slot. */
+export function IconBag({ className }: { className?: string }) {
+  return (
     <Pixel className={className}>
-      <Dots cells="M7 1h2v2H7V1zM6 3h4v1H6V3zM5 4h6v3H9v1H7V7H5V4zM3 5h2v2H3V5zm8 0h2v2h-2V5zM5 8h2v5H5V8zm4 1h2v5H9V9zM4 13h3v2H4v-2zm5 1h3v2H9v-2z" />
+      <Dots cells="M4 5h8v1H4V5zM3 6h10v1H3V6zM3 7h2v7H3V7zm8 0h2v7h-2V7zM5 7h6v1H5V7zM5 9h6v5H5V9zM7 10h2v2H7v-2z" />
     </Pixel>
   );
 }
@@ -70,6 +97,14 @@ export function IconQr({ className }: { className?: string }) {
 
 export function IconGear({ className }: { className?: string }) {
   return <Settings className={cn("size-4 shrink-0", className)} strokeWidth={2} aria-hidden />;
+}
+
+export function IconHammer({ className }: { className?: string }) {
+  return <Hammer className={cn("size-4 shrink-0", className)} strokeWidth={2.25} aria-hidden />;
+}
+
+export function IconPlay({ className }: { className?: string }) {
+  return <Play className={cn("size-4 shrink-0", className)} strokeWidth={2.5} fill="currentColor" aria-hidden />;
 }
 
 export function IconFullscreen({ className }: { className?: string }) {
@@ -156,6 +191,14 @@ export function IconSend({ className }: { className?: string }) {
   return (
     <Pixel className={className}>
       <Dots cells="M1 3h3v1h2v1h2v1h3V5h2V4h2V3l-1 5h-2v1h-2v1H9v1H7v1H5v1H3v1H1V3z" />
+    </Pixel>
+  );
+}
+
+export function IconUser({ className }: { className?: string }) {
+  return (
+    <Pixel className={className}>
+      <Dots cells="M6 2h4v1h1v3H9v1H7V6H5V3h1V2zm-3 9h10v1H3v-1zm1 2h8v1H4v-1zm1 2h6v1H5v-1z" />
     </Pixel>
   );
 }

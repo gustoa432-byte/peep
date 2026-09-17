@@ -10,9 +10,36 @@ export type BlockDelta = BlockEdit & {
   cursor: number;
 };
 
-export type EmoteKind = "wave" | "hearts" | "laugh";
+export type EmoteKind =
+  | "wave"
+  | "hearts"
+  | "laugh"
+  | "fart"
+  | "censor"
+  | "death"
+  | "attention"
+  | "sixSeven";
 
 export const EMOTE_DURATION = 2.6;
+/** Shared cooldown after any reaction (except sixSeven). */
+export const EMOTE_COOLDOWN_S = 15;
+
+/** Reactions that never start or consume the shared emote cooldown. */
+export function emoteIgnoresCooldown(kind: EmoteKind): boolean {
+  return kind === "sixSeven";
+}
+/** Attention emote: arms flap this long. */
+export const EMOTE_ATTENTION_S = 6;
+/** Full raise+lower cycles during the attention emote. */
+export const EMOTE_ATTENTION_FLAPS = 18;
+/** Short plate / flash for censor. */
+export const EMOTE_CENSOR_S = 1;
+/** Fart particle lifetime. */
+export const EMOTE_FART_S = 1.5;
+
+export function emoteDuration(kind: EmoteKind): number {
+  return kind === "attention" ? EMOTE_ATTENTION_S : EMOTE_DURATION;
+}
 
 export type HudState = {
   /** Block ids of the five hotbar slots, in order. */
@@ -23,6 +50,8 @@ export type HudState = {
   playing: boolean;
   /** Desktop: true only while the canvas owns Pointer Lock. */
   locked: boolean;
+  /** True when the browser rejected Pointer Lock (e.g. Telegram Desktop) — drag-to-look is active. */
+  lockDenied: boolean;
   worldId: string;
   isCreator: boolean;
   /** 0–1 while holding the second tap to place; 0 otherwise. */
@@ -41,6 +70,19 @@ export type HudState = {
   } | null;
   /** Counts for each palette slot — you place what you dug. */
   counts: readonly number[];
+  /** All placeable block ids for the global inventory sheet. */
+  catalog: readonly number[];
+  /** Counts for each catalog entry (same order). */
+  catalogCounts: readonly number[];
+  /** Unseen loot badge on the inventory button (0 = hide). */
+  invBadge: number;
+  /** 0…1 progress toward next dynamite recharge (0 when full). */
+  dynamiteCd: number;
+  /**
+   * Shared reaction cooldown remaining, 0…1 (1 = just fired, 0 = ready).
+   * Circular recharge ring fills as this falls to 0.
+   */
+  emoteCd: number;
   fridayUnlocked: boolean;
   hatPrompt: boolean;
   chestOffer: boolean;
@@ -49,6 +91,29 @@ export type HudState = {
   guestBuildAllowed: boolean;
   islandLocked: boolean;
   fridayOnline: boolean;
+  /** Brief HUD toast (empty inventory etc.). */
+  /** 0…1 red screen flash for local censor emote. */
+  censorFlash: number;
+  notice: string | null;
+  /** @deprecated Floor mesh replaces HUD look hint for troll quest. */
+  lookHint: string | null;
+  /** True while host/guest cinematic locks input and hides chrome. */
+  cinematicActive: boolean;
+  /** Underwater troll quest tracker (null when hidden). */
+  trollTracker: {
+    laps: number;
+    total: number;
+    secondsLeft: number;
+    success: boolean;
+    /** Title «ОПЛЫВИ ОСТРОВ 3 РАЗА» while swimming. */
+    showTitle: boolean;
+    /** Brief sector-crossing flash (0…1 remaining). */
+    sectorFlash: number;
+    /** Completed quarter-sectors this lap (0…3), for arrow ring. */
+    sectorsDone: number;
+    /** Suggested swim bearing around the island, degrees CW from +Z (forward). */
+    guideDeg: number;
+  } | null;
 };
 
 export type NetPos = {
@@ -79,6 +144,8 @@ export type NetBlockReq = {
 
 export type NetHello = {
   t: "hello";
+  /** Telegram display name for torso nametag. */
+  name?: string;
 };
 
 export type NetEmote = {
@@ -102,6 +169,16 @@ export type NetPerms = {
   locked: boolean;
 };
 
+/** Host ↔ guest Friday spawn cinematic. */
+export type NetCine = {
+  t: "cine";
+  phase: "fall" | "landed" | "tnt" | "loot";
+  x?: number;
+  y?: number;
+  z?: number;
+  groundY?: number;
+};
+
 export type NetMsg =
   | NetPos
   | NetBlock
@@ -110,7 +187,8 @@ export type NetMsg =
   | NetEmote
   | NetLook
   | NetKick
-  | NetPerms;
+  | NetPerms
+  | NetCine;
 
 export type PresencePlayer = {
   playerId: string;
@@ -142,7 +220,7 @@ export type MetricName =
 
 export type JoinErr = {
   ok: false;
-  error: "not_found" | "full" | "locked" | "banned";
+  error: "not_found" | "full" | "locked" | "banned" | "occupied";
 };
 
 export type JoinOk = {

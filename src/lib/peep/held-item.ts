@@ -2,29 +2,18 @@ import type { Group } from "three";
 import { createPickaxe } from "./pickaxe";
 import { ITEM_DRAFT } from "./item-draft";
 import {
-  applyItemTransform,
   buildItemFromVoxels,
   defaultTransform,
   poseHeldGroup,
-  readStoredDocument,
-  type ItemDocument,
 } from "./item-voxels";
 
-function resolveDocument(): ItemDocument | null {
-  const stored = readStoredDocument();
-  if (stored && stored.voxels.length) return stored;
-  if (ITEM_DRAFT && ITEM_DRAFT.length) {
-    return { voxels: ITEM_DRAFT, transform: stored?.transform ?? defaultTransform() };
-  }
-  return null;
-}
-
+/**
+ * In-world held tool. Never reads forge storage — кузница has its own draft/library.
+ */
 export function createHeldItem(): Group {
-  const doc = resolveDocument();
   const transform = defaultTransform();
-  applyItemTransform(transform);
-  if (doc && doc.voxels.length) {
-    const g = buildItemFromVoxels(doc.voxels);
+  if (ITEM_DRAFT.length) {
+    const g = buildItemFromVoxels(ITEM_DRAFT);
     poseHeldGroup(g, transform);
     return g;
   }

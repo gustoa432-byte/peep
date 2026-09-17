@@ -1,0 +1,8 @@
+SFX bundled in /sfx:
+- fart-long.ogg, fart-bunch.ogg, fart-farts.ogg — custom fart samples (random on emote)
+- dolphin.mp3 — angry reaction sample
+- love.mp3 — hearts reaction sample
+- death.mp3 — death/skull reaction sample
+- oh.mp3 — attention reaction sample
+- 67.mp3 — six-seven reaction sample (no cooldown)
+- boom.wav — custom explosion sample
