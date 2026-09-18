@@ -34,7 +34,7 @@
 
 ## Как играть
 
-1. Открой [peepland.ru](https://peepland.ru) в Telegram Mini App или браузере  
+1. Открой [peepland](t.me/peeplandbot) в Telegram Mini App или браузере  
 2. Создай / открой мир по ссылке  
 3. WASD + мышь (Pointer Lock) или тач-джойстики  
 4. Камера — от первого лица (кроме катсцен)  
