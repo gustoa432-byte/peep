@@ -88,7 +88,6 @@ export function GameHud({
   onClearInvBadge,
   onOverlayChange,
   onKeybindsChange,
-  onOpenPickaxeGrip,
 }: {
   hud: HudState;
   orient: OrientMode;
@@ -113,8 +112,6 @@ export function GameHud({
   onOverlayChange?: (open: boolean) => void;
   /** Desktop: refresh in-game keybind cache after settings edit. */
   onKeybindsChange?: () => void;
-  /** Open pickaxe grip tuner. */
-  onOpenPickaxeGrip?: () => void;
 }) {
   const { t } = useTranslation();
   const [qrOpen, setQrOpen] = useState(false);
@@ -247,11 +244,6 @@ export function GameHud({
           </>
         ) : null}
 
-        {onOpenPickaxeGrip ? (
-          <Chip aria-label={t("hud.pickaxe.ariaLabel")} className="h-11 px-2.5" onClick={onOpenPickaxeGrip}>
-            {t("hud.pickaxe.label")}
-          </Chip>
-        ) : null}
         <Chip aria-label={t("hud.settings.ariaLabel")} className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
           <IconGear className="size-4" />
         </Chip>

@@ -3,7 +3,6 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "@/lib/i18n/react";
 import { BootLoader } from "@/components/peep/boot-loader";
 import { GameHud } from "@/components/peep/game-hud";
-import { PickaxeGripPanel } from "@/components/peep/pickaxe-grip-panel";
 import { LookSurface, PlaceHint, TouchControls } from "@/components/peep/touch-controls";
 import { Button } from "@/components/ui/button";
 import { BLOCK_PALETTE, DEFAULT_HOTBAR } from "@/lib/peep/constants";
@@ -13,7 +12,7 @@ import {
   isFullscreen,
   toggleFullscreen,
 } from "@/lib/peep/fullscreen";
-import { PeepGame, type ToolPoseExport } from "@/lib/peep/game";
+import { PeepGame } from "@/lib/peep/game";
 import { startLazySave } from "@/lib/peep/lazy-save";
 import { getTelegramSaveId } from "@/lib/peep/player-id";
 import { markSessionDone, minedBlockCount, placedBlockCount, recordMinedBlock, recordPlacedBlock } from "@/lib/peep/remember-world";
@@ -104,8 +103,6 @@ export function WorldStage({
   const desktopMouse = useDesktopMouseUi();
   const showTouchPads = phone && !desktopMouse && !isTelegramDesktopPlatform();
   const [hudOverlay, setHudOverlay] = useState(false);
-  const [gripOpen, setGripOpen] = useState(false);
-  const [toolPose, setToolPose] = useState<ToolPoseExport | null>(null);
   // Game is landscape-only on phones; desktop HUD stays "portrait" layout labels.
   const orient = phone ? "landscape" : "portrait";
   const inviteUrl =
@@ -116,8 +113,7 @@ export function WorldStage({
   }, []);
 
   useEffect(() => {
-    const open = hudOverlay || gripOpen;
-    if (!open) return;
+    if (!hudOverlay) return;
     gameRef.current?.setMoveAxis(0, 0);
     gameRef.current?.endBreak();
     gameRef.current?.endPlace();
@@ -126,7 +122,7 @@ export function WorldStage({
     } catch {
       /* ignore */
     }
-  }, [hudOverlay, gripOpen]);
+  }, [hudOverlay]);
 
   useEffect(() => {
     if (!phone) {
@@ -280,26 +276,6 @@ export function WorldStage({
           onFullscreen={() => void onFullscreen()}
           onOverlayChange={setHudOverlay}
           onKeybindsChange={() => gameRef.current?.reloadKeybinds()}
-          onOpenPickaxeGrip={() => {
-            const pose = gameRef.current?.getToolPose();
-            if (!pose) return;
-            setToolPose({
-              pickaxe: { ...pose.pickaxe },
-              arm: { ...pose.arm },
-            });
-            setGripOpen(true);
-          }}
-        />
-      ) : null}
-
-      {hud.playing && gripOpen && toolPose ? (
-        <PickaxeGripPanel
-          pose={toolPose}
-          onClose={() => setGripOpen(false)}
-          onChange={(next) => {
-            setToolPose(next);
-            gameRef.current?.setToolPose(next);
-          }}
         />
       ) : null}
 
