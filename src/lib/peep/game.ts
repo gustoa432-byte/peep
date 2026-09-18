@@ -102,7 +102,7 @@ import { addBlock, addDynamite, countOf, dynamiteCharges, dynamiteRechargeProgre
 import { gameViewSize } from "./fake-landscape";
 import { hapticBoom, hapticJump } from "./haptics";
 import { getTelegramSaveId } from "./player-id";
-import { getTelegramDisplayName, isTelegramDesktopPlatform, isTelegramMobilePlatform } from "./telegram";
+import { getTelegramDisplayName, isTelegramDesktopPlatform } from "./telegram";
 import type { WorldSavePayload } from "./world-serialize";
 import { voxelRaycast, type VoxelHit } from "./raycast";
 import { BLOCK_SHADE_GRAIN_GLSL, BLOCK_TEXEL_GLSL, createBlockAtlas } from "./textures";
