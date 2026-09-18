@@ -314,12 +314,13 @@ export class PeepGame {
   private pointerLockDenied = false;
   /**
    * Desktop aim mode: ESC clears this (cursor free). Canvas click sets it
-   * (cursor hidden + look). Dig/place only while engaged (or after PL).
+   * (cursor hidden + Pointer Lock). Dig/place only while engaged (or after PL).
+   * Camera free-look does NOT depend on this — only lastX/lastY tracking.
    */
   private aimEngaged = false;
-  private lastMouseX = 0;
-  private lastMouseY = 0;
-  private mouseSampled = false;
+  /** Canvas free-look sample. Undefined until first move (skip one frame). */
+  private lastMouseX: number | undefined = undefined;
+  private lastMouseY: number | undefined = undefined;
   /** Legacy flag — must never gate mouse look. */
   private dragging = false;
   private ptrStartX = 0;
@@ -1223,7 +1224,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
     this.onMouseMove = this.onMouseMove.bind(this);
-    this.onPointerMove = this.onPointerMove.bind(this);
+    this.onCanvasMouseMove = this.onCanvasMouseMove.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onContext = this.onContext.bind(this);
@@ -1242,9 +1243,9 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.addEventListener("resize", this.onOrient);
     document.addEventListener("pointerlockchange", this.onLock);
     document.addEventListener("pointerlockerror", this.onLockError);
+    // Pointer Lock: document mousemove. Free-look: canvas mousemove (always tracks lastX/Y).
     document.addEventListener("mousemove", this.onMouseMove);
-    // Canvas pointermove: TG Desktop often zeros document movementX unless a button is held.
-    c.addEventListener("pointermove", this.onPointerMove);
+    c.addEventListener("mousemove", this.onCanvasMouseMove);
     c.addEventListener("click", this.onCanvasClick);
     c.addEventListener("pointerdown", this.onPointerDown);
     window.addEventListener("pointerup", this.onPointerUp);
@@ -1267,7 +1268,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     document.removeEventListener("pointerlockchange", this.onLock);
     document.removeEventListener("pointerlockerror", this.onLockError);
     document.removeEventListener("mousemove", this.onMouseMove);
-    c.removeEventListener("pointermove", this.onPointerMove);
+    c.removeEventListener("mousemove", this.onCanvasMouseMove);
     c.removeEventListener("click", this.onCanvasClick);
     c.removeEventListener("pointerdown", this.onPointerDown);
     window.removeEventListener("pointerup", this.onPointerUp);
@@ -1389,20 +1390,9 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     return t === "mouse" || t === "" || t === "pen";
   }
 
-  /**
-   * Free-look without Pointer Lock (TG Desktop). Requires aimEngaged after canvas click.
-   * NEVER checks buttons / dragging — mouse move alone turns the camera.
-   */
-  private wantsFreeMouseLook(): boolean {
-    if (!this.playing || this.inputBlocked()) return false;
-    if (isTelegramMobilePlatform()) return false;
-    if (!this.wantsDesktopLock()) return false;
-    return this.aimEngaged || this.isLocked();
-  }
-
   private applyAimCursor() {
     const c = this.opts.canvas;
-    if (this.isLocked() || this.wantsFreeMouseLook()) {
+    if (this.isLocked() || this.aimEngaged) {
       c.style.cursor = "none";
       c.classList.add("peep-aim-cursor");
     } else {
@@ -1413,14 +1403,15 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
 
   private engageAim() {
     this.aimEngaged = true;
-    this.mouseSampled = false;
     this.applyAimCursor();
     this.hudDirty = true;
   }
 
   private disengageAim() {
     this.aimEngaged = false;
-    this.mouseSampled = false;
+    // Reseed on next move — cursor may have jumped while free.
+    this.lastMouseX = undefined;
+    this.lastMouseY = undefined;
     this.applyAimCursor();
     this.hudDirty = true;
   }
@@ -1431,6 +1422,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       this.pointerLockDenied = false;
       this.aimEngaged = true;
       this.dragging = false;
+      this.lastMouseX = undefined;
+      this.lastMouseY = undefined;
     } else {
       // ESC / unlock — free the cursor until the next canvas click.
       this.disengageAim();
@@ -1445,7 +1438,6 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.pointerLocked = false;
     this.pointerLockDenied = true;
     this.dragging = false;
-    // Stay engaged if user already clicked the canvas — free-look without PL.
     this.applyAimCursor();
     this.hudDirty = true;
   }
@@ -1456,52 +1448,61 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     if (!this.wantsDesktopLock()) return;
     if (this.isLocked()) return;
     e.preventDefault();
-    // Sync PL request inside the click gesture (browser requirement).
     this.engageAim();
     this.tryLock();
   }
 
-  private applyMouseLook(dx: number, dy: number, clientX: number, clientY: number) {
-    if (!this.wantsFreeMouseLook() && !this.isLocked()) return;
-    // Prefer movement deltas; fall back to client delta when WebView zeros movementX
-    // unless a button is held (Telegram Desktop).
-    let mx = dx;
-    let my = dy;
-    if (mx === 0 && my === 0 && this.mouseSampled) {
+  /**
+   * Desktop free-look (TG Desktop / fine pointer).
+   * Linear: move → delta from lastX/Y → yaw/pitch → save lastX/Y.
+   * Never gated on buttons, dragging, or aimEngaged.
+   */
+  private desktopFreeLook(clientX: number, clientY: number, movementX: number, movementY: number) {
+    if (isTelegramMobilePlatform()) return;
+    if (!this.wantsDesktopLock() && !this.isLocked()) return;
+
+    if (this.lastMouseX === undefined || this.lastMouseY === undefined) {
+      this.lastMouseX = clientX;
+      this.lastMouseY = clientY;
+      return;
+    }
+
+    let mx: number;
+    let my: number;
+    if (this.isLocked()) {
+      mx = movementX;
+      my = movementY;
+    } else if (movementX !== 0 || movementY !== 0) {
+      mx = movementX;
+      my = movementY;
+    } else {
+      // TG Desktop zeros movementX unless a button is held — use client delta.
       mx = clientX - this.lastMouseX;
       my = clientY - this.lastMouseY;
     }
+
+    // ALWAYS refresh sample at end of move — never only on mousedown.
     this.lastMouseX = clientX;
     this.lastMouseY = clientY;
-    this.mouseSampled = true;
+
+    if (!this.playing || this.inputBlocked()) return;
     if (mx === 0 && my === 0) return;
     this.lookDelta(mx, my);
   }
 
+  /** Pointer Lock path only — free-look lives on canvas mousemove. */
   private onMouseMove(e: MouseEvent) {
+    if (!this.isLocked()) return;
     if (!this.playing || this.inputBlocked()) return;
-    if (this.isLocked()) {
-      this.lookDelta(e.movementX, e.movementY);
-      return;
-    }
-    // No button check — ever.
-    this.applyMouseLook(e.movementX, e.movementY, e.clientX, e.clientY);
+    this.lookDelta(e.movementX, e.movementY);
   }
 
   /**
-   * Canvas pointermove for mouse: same free-look path. Touch is ignored here
-   * (HUD LookSurface / pads handle touch).
+   * Canvas mousemove free-look. Tracks lastX/Y every frame — no buttons, no dragging.
    */
-  private onPointerMove(e: PointerEvent) {
-    if (e.pointerType === "touch") return;
-    if (!this.isMousePointer(e)) return;
-    if (!this.playing || this.inputBlocked()) return;
-    if (this.isLocked()) {
-      this.lookDelta(e.movementX, e.movementY);
-      return;
-    }
-    // CRITICAL: do not read e.buttons — TG Desktop must look without LMB held.
-    this.applyMouseLook(e.movementX, e.movementY, e.clientX, e.clientY);
+  private onCanvasMouseMove(e: MouseEvent) {
+    if (this.isLocked()) return;
+    this.desktopFreeLook(e.clientX, e.clientY, e.movementX, e.movementY);
   }
 
   private lookDelta(dx: number, dy: number) {
@@ -1524,8 +1525,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.ptrMoved = false;
     this.tapSlop = 6;
 
-    // First canvas click after ESC / cold start: engage aim + request PL only.
-    // Must NOT dig or place on this gesture.
+    // First canvas click after ESC / cold start: engage + PL only — NOT dig.
     if (!this.isLocked() && this.wantsDesktopLock() && !this.aimEngaged) {
       e.preventDefault();
       this.engageAim();
@@ -1533,7 +1533,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       return;
     }
 
-    // Aim already engaged (or PL active): LMB/RMB dig & place only.
+    // LMB/RMB: dig & place ONLY — never feeds camera look.
     if (codeFromMouseButton(e.button) === this.keybinds.break) this.beginBreak();
     if (codeFromMouseButton(e.button) === this.keybinds.place) this.beginPlace();
   }
