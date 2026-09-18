@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button";
 import { BARRIER, BLOCK_COLORS, BLOCK_NAMES, DYNAMITE, GOLD, GRASS, LEAVES, NEON, WOOD } from "@/lib/peep/constants";
 import { preferHomeMenu } from "@/lib/peep/remember-world";
 import { KeyboardBindsPanel } from "@/components/peep/keyboard-binds-panel";
+import { LanguageSwitchInk } from "@/components/peep/language-switch";
+import { useTranslation } from "@/lib/i18n/react";
 import type { OrientMode } from "@/lib/peep/settings";
 import type { EmoteKind, HudState } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
@@ -114,6 +116,7 @@ export function GameHud({
   /** Open pickaxe grip tuner. */
   onOpenPickaxeGrip?: () => void;
 }) {
+  const { t } = useTranslation();
   const [qrOpen, setQrOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>("game");
@@ -194,7 +197,7 @@ export function GameHud({
       >
         <button
           type="button"
-          aria-label="На главную"
+          aria-label={t("hud.home.ariaLabel")}
           className="relative z-[110] flex h-11 min-w-11 items-center justify-center border-2 border-fg-on-ink/25 bg-bg-deep/40 px-2.5 active:scale-95"
           onPointerDown={(e) => {
             e.stopPropagation();
@@ -208,7 +211,7 @@ export function GameHud({
           <span className="font-display text-base leading-none font-semibold tracking-tight">Peep</span>
         </button>
         <Chip
-          aria-label={fullscreen ? "Выйти из полного экрана" : "Полный экран"}
+          aria-label={fullscreen ? t("hud.fullscreen.exit") : t("hud.fullscreen.enter")}
           className="size-11 shrink-0 px-0"
           onClick={onFullscreen}
         >
@@ -231,12 +234,12 @@ export function GameHud({
         {hud.fridayUnlocked ? (
           <>
             <Chip
-              aria-label="Поделиться с Пятницей"
+              aria-label={t("hud.friday.shareAria")}
               className="bg-primary text-primary-fg border-primary px-3"
               onClick={() => onInvite()}
             >
               <IconCopy className="size-3.5" />
-              <span className="hidden sm:inline">пятница</span>
+              <span className="hidden sm:inline">{t("hud.friday.label")}</span>
             </Chip>
             <Chip aria-label="QR Пятницы" className="hidden size-11 px-0 sm:flex" onClick={() => setQrOpen(true)}>
               <IconQr className="size-4" />
@@ -245,11 +248,11 @@ export function GameHud({
         ) : null}
 
         {onOpenPickaxeGrip ? (
-          <Chip aria-label="Кирка" className="h-11 px-2.5" onClick={onOpenPickaxeGrip}>
-            кирка
+          <Chip aria-label={t("hud.pickaxe.ariaLabel")} className="h-11 px-2.5" onClick={onOpenPickaxeGrip}>
+            {t("hud.pickaxe.label")}
           </Chip>
         ) : null}
-        <Chip aria-label="Настройки" className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
+        <Chip aria-label={t("hud.settings.ariaLabel")} className="size-11 px-0" onClick={() => setSettingsOpen(true)}>
           <IconGear className="size-4" />
         </Chip>
       </div>
@@ -317,9 +320,9 @@ export function GameHud({
           aria-hidden
         >
           <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/90">
-            клик по экрану — захват мыши
+            {t("hud.mouse.captureTitle")}
             <span className="mt-1 block text-[10px] tracking-wider text-muted-on-ink">
-              Esc — курсор · мышь крутит камеру · ЛКМ ломать
+              {t("hud.mouse.captureHint")}
             </span>
           </span>
         </div>
@@ -353,7 +356,7 @@ export function GameHud({
                 phone ? "text-left text-sm leading-tight" : "text-center text-lg sm:text-xl",
               )}
             >
-              ОПЛЫВИ ОСТРОВ 3 РАЗА
+              {t("hud.troll.title")}
             </p>
           ) : null}
           {!hud.trollTracker.success ? (
@@ -398,7 +401,10 @@ export function GameHud({
             <p className={cn("font-bold uppercase tracking-wide", phone ? "text-xs" : "text-sm")}>
               {hud.trollTracker.success
                 ? `${hud.trollTracker.laps}/${hud.trollTracker.total} ✅`
-                : `круг ${hud.trollTracker.laps}/${hud.trollTracker.total}`}
+                : t("hud.troll.lap", {
+                    current: hud.trollTracker.laps,
+                    total: hud.trollTracker.total,
+                  })}
             </p>
             {!hud.trollTracker.success ? (
               <p
@@ -503,7 +509,7 @@ export function GameHud({
 
           <button
             type="button"
-            aria-label="Инвентарь"
+            aria-label={t("hud.inventory.ariaLabel")}
             onClick={() => openInventory(null)}
             className={cn(
               "relative flex size-11 items-center justify-center rounded-pixel border-2 border-fg-on-ink/30 bg-bg-deep/55 text-fg-on-ink sm:size-12",
@@ -536,11 +542,13 @@ export function GameHud({
           >
             <div className="flex items-center justify-between gap-3">
               <p className="font-mono text-sm uppercase tracking-widest">
-                {replaceSlot != null ? `замена слота ${replaceSlot + 1}` : "инвентарь"}
+                {replaceSlot != null
+                  ? t("hud.inventory.replaceSlot", { slot: replaceSlot + 1 })
+                  : t("hud.inventory.title")}
               </p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-11 items-center justify-center text-muted-on-ink"
                 onClick={closeInventory}
               >
@@ -593,7 +601,7 @@ export function GameHud({
 
       {!phone ? (
         <p className="absolute bottom-20 left-1/2 -translate-x-1/2 text-center font-mono text-xs uppercase tracking-wide text-fg-on-ink/80">
-          WASD · мышь · пробел · E/R/T реакции · F говняшка · C цензура · 1–5 слоты · ПКМ ставить
+          {t("hud.controls.desktop")}
         </p>
       ) : null}
 
@@ -603,7 +611,7 @@ export function GameHud({
           style={{ left: hud.chestBar.x, top: hud.chestBar.y }}
         >
           <p className="mb-1 text-center font-mono text-[10px] uppercase tracking-widest text-fg-on-ink drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
-            {hud.chestBar.crafting ? "открытие…" : "сундук"}
+            {hud.chestBar.crafting ? t("hud.chest.opening") : t("hud.chest.label")}
           </p>
           <div className="h-2.5 overflow-hidden rounded-sm border border-fg-on-ink/40 bg-bg-deep/80 shadow-[0_1px_4px_rgba(0,0,0,0.55)]">
             <div
@@ -634,7 +642,7 @@ export function GameHud({
             className="min-h-12 w-full rounded-pixel font-mono uppercase tracking-wide"
             onClick={onPickupHat}
           >
-            подобрать шляпу
+            {t("hud.hat.pickup")}
           </Button>
         </div>
       ) : null}
@@ -642,10 +650,8 @@ export function GameHud({
       {hud.chestOffer ? (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/70 px-6">
           <div className="w-[min(380px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
-            <p className="font-mono text-lg uppercase tracking-wide">сундук</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Внутри — 16 слитков золота. Можно позвать Пятницу.
-            </p>
+            <p className="font-mono text-lg uppercase tracking-wide">{t("hud.chest.modalTitle")}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">{t("hud.chest.modalBody")}</p>
             <div className="mt-5 flex flex-col gap-2">
               {hud.isCreator ? (
                 <Button
@@ -655,7 +661,7 @@ export function GameHud({
                     onDismissChest();
                   }}
                 >
-                  позвать пятницу
+                  {t("hud.chest.inviteFriday")}
                 </Button>
               ) : null}
               <Button
@@ -663,7 +669,7 @@ export function GameHud({
                 className="w-full rounded-pixel border-2 border-border-ink font-mono uppercase"
                 onClick={onDismissChest}
               >
-                закрыть
+                {t("common.close")}
               </Button>
             </div>
           </div>
@@ -674,10 +680,10 @@ export function GameHud({
         <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 px-6">
           <div className="w-[min(320px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-sm uppercase tracking-widest">пятница</p>
+              <p className="font-mono text-sm uppercase tracking-widest">{t("hud.friday.label")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-11 items-center justify-center text-muted-on-ink"
                 onClick={() => setQrOpen(false)}
               >
@@ -692,7 +698,7 @@ export function GameHud({
               className="mt-4 w-full rounded-pixel font-mono uppercase tracking-wide"
               onClick={() => onInvite()}
             >
-              позвать пятницу
+              {t("hud.chest.inviteFriday")}
             </Button>
           </div>
         </div>
@@ -702,10 +708,10 @@ export function GameHud({
         <div className="peep-safe pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85">
           <div className="flex max-h-full w-[min(36rem,100%)] flex-col overflow-hidden rounded-pixel border-2 border-border-ink bg-surface-ink text-fg-on-ink">
             <div className="flex shrink-0 items-center justify-between gap-3 px-4 pt-4 pb-2">
-              <p className="font-mono text-sm uppercase tracking-widest">настройки</p>
+              <p className="font-mono text-sm uppercase tracking-widest">{t("settings.title")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 items-center justify-center text-muted-on-ink"
                 onClick={() => {
                   setSettingsOpen(false);
@@ -725,7 +731,7 @@ export function GameHud({
                     settingsTab === "game" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
                   )}
                 >
-                  игра
+                  {t("settings.tab.game")}
                 </button>
                 <button
                   type="button"
@@ -735,7 +741,7 @@ export function GameHud({
                     settingsTab === "keyboard" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
                   )}
                 >
-                  клавиатура
+                  {t("settings.tab.keyboard")}
                 </button>
               </div>
             ) : null}
@@ -745,10 +751,9 @@ export function GameHud({
               ) : (
                 <>
                   <p className="text-sm leading-relaxed text-muted-on-ink">
-                    {phone
-                      ? "Полный экран — кнопка рядом с Peep. Меню и игра всегда в альбоме."
-                      : "На компьютере мир на весь экран. Кнопка полного экрана прячет панель браузера."}
+                    {phone ? t("settings.phoneFullscreenHint") : t("settings.desktopFullscreenHint")}
                   </p>
+                  <LanguageSwitchInk />
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     {phone && hud.fridayUnlocked ? (
                       <button
@@ -760,7 +765,7 @@ export function GameHud({
                         className="flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
                       >
                         <IconQr className="size-4" />
-                        пятница
+                        {t("hud.friday.label")}
                       </button>
                     ) : null}
                     {hud.isCreator && hud.playing && onKickFriday ? (
@@ -770,7 +775,7 @@ export function GameHud({
                         onClick={onKickFriday}
                         className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide disabled:opacity-40"
                       >
-                        выгнать
+                        {t("hud.settings.kickFriday")}
                       </button>
                     ) : null}
                     {hud.isCreator && hud.playing && onToggleLock ? (
@@ -779,7 +784,7 @@ export function GameHud({
                         onClick={onToggleLock}
                         className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
                       >
-                        {hud.islandLocked ? "открыть остров" : "закрыть остров"}
+                        {hud.islandLocked ? t("hud.settings.unlockIsland") : t("hud.settings.lockIsland")}
                       </button>
                     ) : null}
                     {hud.isCreator && hud.playing && onToggleBuild ? (
@@ -788,7 +793,9 @@ export function GameHud({
                         onClick={onToggleBuild}
                         className="flex min-h-11 items-center justify-center rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
                       >
-                        {hud.guestBuildAllowed ? "запретить стройку" : "разрешить стройку"}
+                        {hud.guestBuildAllowed
+                          ? t("hud.settings.disallowBuild")
+                          : t("hud.settings.allowBuild")}
                       </button>
                     ) : null}
                     {hud.playing && onSaveWorld ? (
@@ -797,7 +804,7 @@ export function GameHud({
                         onClick={() => onSaveWorld()}
                         className="flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-border-ink font-mono text-xs uppercase tracking-wide"
                       >
-                        {saveHint ?? "сохранить мир"}
+                        {saveHint ?? t("hud.settings.saveWorld")}
                       </button>
                     ) : null}
                     {hud.playing && hud.isCreator ? (
@@ -810,13 +817,13 @@ export function GameHud({
                         className="col-span-2 flex min-h-11 items-center justify-center gap-2 rounded-pixel border-2 border-danger/50 font-mono text-xs uppercase tracking-wide text-danger"
                       >
                         <IconReset className="size-4" />
-                        сбросить остров
+                        {t("hud.settings.resetIsland")}
                       </button>
                     ) : null}
                   </div>
                   {hud.isCreator && hud.playing ? (
                     <p className="mt-3 font-mono text-[10px] uppercase tracking-wide text-muted-on-ink">
-                      {hud.fridayOnline ? "Пятница на острове" : "Пятница офлайн · соло"}
+                      {hud.fridayOnline ? t("hud.settings.fridayOnline") : t("hud.settings.fridayOffline")}
                     </p>
                   ) : null}
                 </>
@@ -829,10 +836,8 @@ export function GameHud({
       {confirmReset ? (
         <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 p-3">
           <div className="max-h-full w-[min(24rem,100%)] overflow-y-auto rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-fg-on-ink">
-            <p className="font-mono text-lg uppercase tracking-wide">сбросить остров?</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Все поставленные блоки исчезнут. Остров станет таким, каким был в начале.
-            </p>
+            <p className="font-mono text-lg uppercase tracking-wide">{t("hud.reset.title")}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">{t("hud.reset.body")}</p>
             <div className="mt-5 flex flex-row gap-2">
               <Button
                 variant="ghost"
@@ -840,7 +845,7 @@ export function GameHud({
                 disabled={resetting}
                 onClick={() => setConfirmReset(false)}
               >
-                отмена
+                {t("common.cancel")}
               </Button>
               <Button
                 className="flex-1 rounded-pixel bg-danger font-mono uppercase text-primary-fg"
@@ -853,7 +858,7 @@ export function GameHud({
                   });
                 }}
               >
-                {resetting ? "сбрасываем…" : "сбросить"}
+                {resetting ? t("hud.reset.inProgress") : t("hud.reset.confirm")}
               </Button>
             </div>
           </div>

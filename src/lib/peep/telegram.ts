@@ -3,6 +3,7 @@ import { WORLD_ID_RE } from "./constants";
 /** Minimal Telegram WebApp surface we actually use. */
 export type TelegramWebAppUser = {
   id: number;
+  language_code?: string;
   first_name?: string;
   last_name?: string;
   username?: string;

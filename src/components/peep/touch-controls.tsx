@@ -2,6 +2,7 @@ import { remapLookDelta, remapStickOffset } from "@/lib/peep/fake-landscape";
 import { PLACE_DOUBLE_MS, PLACE_HOLD_CONFIRM_MS, PLACE_TAP_MAX_MS } from "@/lib/peep/constants";
 import { type CSSProperties, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { IconJump, IconPick } from "@/components/peep/peep-icons";
+import { useTranslation } from "@/lib/i18n/react";
 import type { OrientMode } from "@/lib/peep/settings";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ export function LookSurface({
   onHoldStart?: () => void;
   onHoldEnd?: () => void;
 }) {
+  const { t } = useTranslation();
   const active = useRef<number | null>(null);
   const last = useRef<{ x: number; y: number; t: number } | null>(null);
   const start = useRef<{ x: number; y: number; t: number } | null>(null);
@@ -152,7 +154,7 @@ export function LookSurface({
         release();
         if (wasHolding) onHoldEnd?.();
       }}
-      aria-label="Взгляд"
+      aria-label={t("touch.look.ariaLabel")}
     />
   );
 }
@@ -164,6 +166,7 @@ function MoveStick({
   onAxis: (x: number, z: number) => void;
   compact: boolean;
 }) {
+  const { t } = useTranslation();
   const boxRef = useRef<HTMLDivElement>(null);
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const active = useRef<number | null>(null);
@@ -237,7 +240,7 @@ function MoveStick({
         if (active.current !== e.pointerId) return;
         release();
       }}
-      aria-label="Движение"
+      aria-label={t("touch.move.ariaLabel")}
     >
       <span
         className="pointer-events-none absolute rounded-pixel border-2 border-fg-on-ink/25 bg-bg-deep/20"
@@ -314,11 +317,12 @@ function BreakSpell({
   className?: string;
   style?: CSSProperties;
 }) {
+  const { t } = useTranslation();
   const c = 2 * Math.PI * 26;
   return (
     <button
       type="button"
-      aria-label="Ломать"
+      aria-label={t("touch.break.ariaLabel")}
       style={style}
       className={cn(
         "pointer-events-auto relative flex items-center justify-center touch-none select-none rounded-pixel",
@@ -372,6 +376,7 @@ export function TouchControls({
   orient: OrientMode;
   force?: boolean;
 }) {
+  const { t } = useTranslation();
   const land = orient === "landscape";
   return (
     <div
@@ -404,7 +409,7 @@ export function TouchControls({
           }}
         />
         <ActionButton
-          label="Прыжок"
+          label={t("touch.jump.label")}
           onFire={onJump}
           className="absolute size-[72px]"
           style={{
@@ -429,6 +434,7 @@ export function PlaceHint({
   orient: OrientMode;
   force?: boolean;
 }) {
+  const { t } = useTranslation();
   // Phone / TG mobile only. Show after first dig until a few successful places.
   if (!force || mined < 1 || placed >= 2) return null;
   return (
@@ -436,7 +442,7 @@ export function PlaceHint({
       className="pointer-events-none absolute top-[42%] left-1/2 z-[90] max-w-[min(22rem,88vw)] -translate-x-1/2 -translate-y-1/2 animate-pulse border-2 border-fg-on-ink bg-bg-deep/90 px-4 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-wide text-fg-on-ink shadow-[0_0_24px_rgba(255,255,255,0.35)]"
       role="status"
     >
-      чтобы поставить блок — два раза тапнуть + удержание
+      {t("touch.placeHint")}
     </p>
   );
 }

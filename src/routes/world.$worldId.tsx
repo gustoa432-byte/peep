@@ -14,6 +14,7 @@ import {
 import { initTelegramWebApp } from "@/lib/peep/telegram";
 import { takeTelegramInventory } from "@/lib/peep/tg-boot-cache";
 import type { JoinResult } from "@/lib/peep/types";
+import { useTranslation } from "@/lib/i18n/react";
 import { createWorld, getWorldMeta, joinWorld } from "@/lib/peep/world.functions";
 
 const WorldStage = lazy(async () => {
@@ -37,6 +38,7 @@ function JoinSplash({ progress }: { progress: number }) {
 }
 
 function WorldPage() {
+  const { t } = useTranslation();
   const { worldId } = Route.useParams();
   const valid = WORLD_ID_RE.test(worldId);
   const [playerId] = useState(() => {
@@ -94,7 +96,7 @@ function WorldPage() {
     return (
       <ErrorScreen
         title="Connection lost"
-        body="Сервер недоступен. Попробуйте ещё раз."
+        body={t("world.error.serverUnavailable")}
       />
     );
   }
@@ -106,23 +108,23 @@ function WorldPage() {
     if (result.error === "locked") {
       return (
         <ErrorScreen
-          title="Остров закрыт"
-          body="Хозяин закрыл остров. Новые гости не могут войти."
+          title={t("world.error.islandLocked.title")}
+          body={t("world.error.islandLocked.body")}
         />
       );
     }
     if (result.error === "banned") {
       return (
         <ErrorScreen
-          title="Нет доступа"
-          body="Хозяин выгнал вас с этого острова."
+          title={t("world.error.banned.title")}
+          body={t("world.error.banned.body")}
         />
       );
     }
     return (
       <ErrorScreen
         title="World not found"
-        body="Такого мира нет. Проверьте ссылку или создайте новый."
+        body={t("world.error.notFound.body")}
       />
     );
   }
@@ -147,6 +149,7 @@ function WorldPage() {
 
 /** Invite arrived too late — Friday slot already claimed. */
 function FridayTakenScreen() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +162,7 @@ function FridayTakenScreen() {
   const createOwn = async () => {
     if (busy) return;
     if (countOwnedWorlds() >= MAX_WORLDS_PER_ACCOUNT) {
-      setError(`Лимит: максимум ${MAX_WORLDS_PER_ACCOUNT} мира. Зайдите в меню.`);
+      setError(t("world.error.worldLimitMenu", { max: MAX_WORLDS_PER_ACCOUNT }));
       return;
     }
     setBusy(true);
@@ -171,7 +174,7 @@ function FridayTakenScreen() {
       await navigate({ to: "/world/$worldId", params: { worldId: world.id } });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      setError(msg && msg.length < 160 ? msg : "Не удалось создать остров. Попробуйте из меню.");
+      setError(msg && msg.length < 160 ? msg : t("world.error.createIslandFailed"));
       setBusy(false);
     }
   };
@@ -180,9 +183,11 @@ function FridayTakenScreen() {
     <main className="peep-home relative h-dvh overflow-hidden bg-bg-deep text-fg-on-ink">
       <div id="game-wrapper" className="flex items-center justify-center px-6">
         <div className="w-full max-w-md rounded-pixel border-2 border-border-ink bg-surface-ink p-6">
-          <h1 className="font-display text-2xl font-semibold tracking-wide">Пятница уже нашлась</h1>
+          <h1 className="font-display text-2xl font-semibold tracking-wide">
+            {t("world.fridayTaken.title")}
+          </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-on-ink">
-            На этом острове уже заняты оба места Пятницы. Можно выйти в меню или создать свой остров.
+            {t("world.fridayTaken.body")}
           </p>
           {error ? <p className="mt-3 font-mono text-xs text-[#e04532]">{error}</p> : null}
           <div className="mt-6 flex flex-col gap-2">
@@ -192,7 +197,7 @@ function FridayTakenScreen() {
               disabled={busy}
               onClick={() => void createOwn()}
             >
-              {busy ? "создаём…" : "создать свой остров"}
+              {busy ? t("world.fridayTaken.creating") : t("world.fridayTaken.createOwn")}
             </Button>
             <Button
               className="w-full rounded-pixel font-mono uppercase tracking-wide"
@@ -200,7 +205,7 @@ function FridayTakenScreen() {
               disabled={busy}
               onClick={goMenu}
             >
-              в меню
+              {t("world.fridayTaken.toMenu")}
             </Button>
           </div>
         </div>
@@ -210,6 +215,7 @@ function FridayTakenScreen() {
 }
 
 function ErrorScreen({ title, body }: { title: string; body: string }) {
+  const { t } = useTranslation();
   return (
     <main className="peep-home relative h-dvh overflow-hidden bg-bg text-fg">
       <div id="game-wrapper" className="flex items-center justify-center px-6">
@@ -223,7 +229,7 @@ function ErrorScreen({ title, body }: { title: string; body: string }) {
                 preferHomeMenu();
               }}
             >
-              На главную
+              {t("common.homeCapitalized")}
             </Link>
           </Button>
         </div>

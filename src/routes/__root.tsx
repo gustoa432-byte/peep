@@ -1,5 +1,6 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
+import { I18nProvider } from "@/lib/i18n/react";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Peepland";
@@ -19,7 +20,7 @@ export const Route = createRootRoute({
       { httpEquiv: "Expires", content: "0" },
       {
         name: "description",
-        content: "Peepland — мгновенные воксельные сессии в Telegram Mini Apps.",
+        content: "Peepland — instant voxel sessions in Telegram Mini Apps.",
       },
     ],
     links: [
@@ -38,13 +39,15 @@ export const Route = createRootRoute({
     scripts: [{ src: "https://telegram.org/js/telegram-web-app.js" }],
   }),
   component: () => (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
         <AuthProvider>
-          <Outlet />
+          <I18nProvider>
+            <Outlet />
+          </I18nProvider>
         </AuthProvider>
         <Scripts />
       </body>

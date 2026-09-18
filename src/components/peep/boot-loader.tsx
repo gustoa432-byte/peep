@@ -8,11 +8,12 @@ const MIN_SHOW_MS = 500;
 const MAX_BOOT_MS = 14_000;
 
 function nextHintIndex(last: number): number {
-  if (BOOT_TIPS.length === 0) return 0;
+  const n = BOOT_TIPS.length;
+  if (n <= 1) return 0;
   let randomIndex: number;
   do {
-    randomIndex = Math.floor(Math.random() * BOOT_TIPS.length);
-  } while (randomIndex === last && BOOT_TIPS.length > 1);
+    randomIndex = Math.floor(Math.random() * n);
+  } while (randomIndex === last);
   return randomIndex;
 }
 

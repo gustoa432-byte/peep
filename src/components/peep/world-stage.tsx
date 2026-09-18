@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "@/lib/i18n/react";
 import { BootLoader } from "@/components/peep/boot-loader";
 import { GameHud } from "@/components/peep/game-hud";
 import { PickaxeGripPanel } from "@/components/peep/pickaxe-grip-panel";
@@ -84,6 +85,7 @@ export function WorldStage({
   guestBuildAllowed?: boolean;
   islandLocked?: boolean;
 }) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<PeepGame | null>(null);
@@ -190,19 +192,19 @@ export function WorldStage({
 
   const onSaveWorld = async () => {
     if (!isCreator) {
-      setSaveHint("сохранять может только хозяин");
+      setSaveHint(t("world.save.ownerOnly"));
       window.setTimeout(() => setSaveHint(null), 2800);
       return;
     }
     const lazy = lazyRef.current;
     if (!lazy) {
-      setSaveHint("Сохранение доступно в Telegram Mini App");
+      setSaveHint(t("world.save.telegramOnly"));
       window.setTimeout(() => setSaveHint(null), 2800);
       return;
     }
-    setSaveHint("сохраняем…");
+    setSaveHint(t("world.save.inProgress"));
     const ok = await lazy.flush();
-    setSaveHint(ok ? "мир сохранён" : "не удалось сохранить");
+    setSaveHint(ok ? t("world.save.success") : t("world.save.failed"));
     window.setTimeout(() => setSaveHint(null), 2200);
   };
 
@@ -224,13 +226,13 @@ export function WorldStage({
     const el = stageRef.current;
     if (!el) return;
     if (!canFullscreen()) {
-      setFsHint("Этот браузер не умеет полноэкранный режим. Добавьте Peepland на главный экран.");
+      setFsHint(t("world.fullscreen.unsupported"));
       window.setTimeout(() => setFsHint(null), 3200);
       return;
     }
     const result = await toggleFullscreen(el);
     if (result === "denied") {
-      setFsHint("Браузер не пустил. Добавьте Peepland на главный экран — откроется как приложение.");
+      setFsHint(t("world.fullscreen.denied"));
       window.setTimeout(() => setFsHint(null), 3200);
       return;
     }
@@ -304,10 +306,10 @@ export function WorldStage({
       {kicked ? (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-bg-deep/80 px-6">
           <div className="w-[min(360px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-5 text-center text-fg-on-ink">
-            <p className="font-mono text-sm uppercase tracking-widest">вас выгнали</p>
-            <p className="mt-2 text-sm text-muted-on-ink">Хозяин закрыл сессию Пятницы.</p>
+            <p className="font-mono text-sm uppercase tracking-widest">{t("world.kicked.title")}</p>
+            <p className="mt-2 text-sm text-muted-on-ink">{t("world.kicked.body")}</p>
             <Button asChild className="mt-4 w-full rounded-pixel font-mono uppercase" variant="secondary">
-              <Link to="/">на главную</Link>
+              <Link to="/">{t("common.home")}</Link>
             </Button>
           </div>
         </div>
@@ -316,12 +318,8 @@ export function WorldStage({
       {hud.playing && hud.lockDenied && desktopMouse ? (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/80 text-white backdrop-blur-sm">
           <div className="max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center">
-            <h2 className="mb-3 text-xl font-bold">Ограничение Telegram Web</h2>
-            <p className="mb-6 text-sm text-zinc-400">
-              Веб-версия Telegram блокирует захват мыши для 3D-игр. Чтобы свободно
-              осматриваться (360°), откройте игру в полноценном браузере или используйте
-              приложение Telegram Desktop.
-            </p>
+            <h2 className="mb-3 text-xl font-bold">{t("world.tgWeb.title")}</h2>
+            <p className="mb-6 text-sm text-zinc-400">{t("world.tgWeb.body")}</p>
             <button
               type="button"
               onClick={() => {
@@ -338,7 +336,7 @@ export function WorldStage({
               }}
               className="w-full rounded-xl bg-white px-6 py-2 font-bold text-black hover:bg-zinc-200"
             >
-              Открыть в браузере
+              {t("world.tgWeb.openBrowser")}
             </button>
           </div>
         </div>
@@ -369,19 +367,17 @@ export function WorldStage({
       {!hud.playing && !lost && !bootLoading ? (
         <div className="pointer-events-auto absolute inset-0 z-[300] flex items-center justify-center bg-bg-deep/85 px-6">
           <div className="w-[min(420px,100%)] rounded-pixel border-2 border-border-ink bg-surface-ink p-6 text-fg-on-ink">
-            <p className="font-mono text-xl uppercase tracking-wide">мир готов</p>
-            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">
-              Нажмите, чтобы войти. Остров — только начало. Ломайте, чтобы строить.
-            </p>
+            <p className="font-mono text-xl uppercase tracking-wide">{t("world.enter.title")}</p>
+            <p className="mt-2 text-sm leading-relaxed text-muted-on-ink">{t("world.enter.body")}</p>
             <Button
               className="mt-5 w-full rounded-pixel font-mono uppercase tracking-wide"
               size="lg"
               onClick={() => gameRef.current?.startPlaying()}
             >
-              войти в мир
+              {t("world.enter.button")}
             </Button>
             <p className="mt-3 text-center font-mono text-xs uppercase tracking-wide text-muted-on-ink md:hidden">
-              стик — ход · свайп — взгляд · ломай, чтобы ставить · кирка — ломать
+              {t("world.enter.touchHint")}
             </p>
           </div>
         </div>

@@ -1,19 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconHeart, IconLaugh, IconWave } from "@/components/peep/peep-icons";
+import { useTranslation, type TranslationKey } from "@/lib/i18n/react";
 import { emoteIgnoresCooldown, type EmoteKind } from "@/lib/peep/types";
 import { cn } from "@/lib/utils";
 
-const EMOTES: { kind: EmoteKind; label: string; Icon?: typeof IconWave; emoji?: string }[] = [
-  { kind: "wave", label: "Помахать", Icon: IconWave, emoji: "🖐️" },
-  { kind: "hearts", label: "Сердца", Icon: IconHeart, emoji: "❤️" },
-  { kind: "laugh", label: "Смех", Icon: IconLaugh, emoji: "😂" },
-  { kind: "fart", label: "Говняшка", emoji: "💩" },
-  { kind: "censor", label: "Гнев", emoji: "😡" },
-  { kind: "death", label: "Смерть", emoji: "💀" },
-  { kind: "attention", label: "Внимание", emoji: "⚠️" },
-  { kind: "sixSeven", label: "67", emoji: "67" },
+type EmoteEntry = {
+  kind: EmoteKind;
+  labelKey: TranslationKey | null;
+  Icon?: typeof IconWave;
+  emoji?: string;
+};
+
+const EMOTE_ENTRIES: EmoteEntry[] = [
+  { kind: "wave", labelKey: "emote.wave", Icon: IconWave, emoji: "🖐️" },
+  { kind: "hearts", labelKey: "emote.hearts", Icon: IconHeart, emoji: "❤️" },
+  { kind: "laugh", labelKey: "emote.laugh", Icon: IconLaugh, emoji: "😂" },
+  { kind: "fart", labelKey: "emote.fart", emoji: "💩" },
+  { kind: "censor", labelKey: "emote.censor", emoji: "😡" },
+  { kind: "death", labelKey: "emote.death", emoji: "💀" },
+  { kind: "attention", labelKey: "emote.attention", emoji: "⚠️" },
+  { kind: "sixSeven", labelKey: null, emoji: "67" },
 ];
+
+function getEmotes(t: (key: TranslationKey) => string) {
+  return EMOTE_ENTRIES.map(({ kind, labelKey, Icon, emoji }) => ({
+    kind,
+    label: labelKey ? t(labelKey) : "67",
+    Icon,
+    emoji,
+  }));
+}
 
 /** Per-icon recharge ring: `cd` remaining 0…1 (1 = just used). Fill grows as cd → 0. */
 function EmoteCooldownRing({ cd, size = 36 }: { cd: number; size?: number }) {
@@ -64,6 +81,8 @@ export function EmoteBar({
   /** Remaining cooldown 0…1 (blocks presses while > 0). */
   emoteCd?: number;
 }) {
+  const { t } = useTranslation();
+  const emotes = getEmotes(t);
   const cooling = emoteCd > 0.001;
   return (
     <div
@@ -72,7 +91,7 @@ export function EmoteBar({
         layout === "column" ? "flex-col items-center" : "flex-row items-center",
       )}
     >
-      {EMOTES.map(({ kind, label, Icon, emoji }) => {
+      {emotes.map(({ kind, label, Icon, emoji }) => {
         const free = emoteIgnoresCooldown(kind);
         const blocked = cooling && !free;
         return (
@@ -112,6 +131,8 @@ export function ReactionMenu({
   onEmote: (kind: EmoteKind) => void;
   emoteCd?: number;
 }) {
+  const { t } = useTranslation();
+  const emotes = getEmotes(t);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const trayRef = useRef<HTMLDivElement>(null);
@@ -139,9 +160,9 @@ export function ReactionMenu({
           top: "calc(max(0.45rem, env(safe-area-inset-top, 0px)) + 3.15rem)",
         }}
         role="menu"
-        aria-label="Реакции"
+        aria-label={t("emote.menu.ariaLabel")}
       >
-        {EMOTES.map(({ kind, label, emoji }) => {
+        {emotes.map(({ kind, label, emoji }) => {
           const free = emoteIgnoresCooldown(kind);
           const blocked = cooling && !free;
           return (
@@ -182,7 +203,7 @@ export function ReactionMenu({
       <div id="reaction-menu" ref={rootRef} className="pointer-events-auto relative z-50">
         <button
           type="button"
-          aria-label={open ? "Скрыть реакции" : "Реакции"}
+          aria-label={open ? t("emote.menu.toggleHide") : t("emote.menu.toggleShow")}
           aria-expanded={open}
           className={cn(
             "relative flex size-11 items-center justify-center border-2 border-fg-on-ink bg-bg-deep font-mono text-lg font-black text-fg-on-ink active:scale-95",

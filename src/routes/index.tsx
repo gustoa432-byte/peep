@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { BootLoader } from "@/components/peep/boot-loader";
 import { KeyboardBindsPanel } from "@/components/peep/keyboard-binds-panel";
+import { LanguageSwitch } from "@/components/peep/language-switch";
 import { IconClose, IconGear, IconHammer, IconPhone, IconPlay, IconSend, IconTrash, IconUser } from "@/components/peep/peep-icons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,23 +60,10 @@ import {
   resolveWorldId,
   updateWorldMeta,
 } from "@/lib/peep/world.functions";
+import { useTranslation } from "@/lib/i18n/react";
+import type { TranslationKey } from "@/lib/i18n/ru";
 
 export const Route = createFileRoute("/")({ component: Home });
-
-const MONTHS_RU = [
-  "января",
-  "февраля",
-  "марта",
-  "апреля",
-  "мая",
-  "июня",
-  "июля",
-  "августа",
-  "сентября",
-  "октября",
-  "ноября",
-  "декабря",
-] as const;
 
 const THUMBS = [
   "linear-gradient(145deg, #6b8f71 0%, #2a4038 42%, #c47a3a 78%, #1a1520 100%)",
@@ -91,13 +79,24 @@ function worldThumb(id: string): string {
   return THUMBS[h]!;
 }
 
-function formatCreated(at: number): string {
+type TranslateFn = (key: TranslationKey, params?: Record<string, string | number>) => string;
+
+function monthKey(m: number): TranslationKey {
+  return `common.month.${m}` as TranslationKey;
+}
+
+function formatCreated(at: number, t: TranslateFn): string {
   const d = new Date(at);
   if (!Number.isFinite(d.getTime())) return "";
-  return `Создан ${d.getDate()} ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`;
+  return t("common.createdAt", {
+    day: d.getDate(),
+    month: t(monthKey(d.getMonth())),
+    year: d.getFullYear(),
+  });
 }
 
 function Home() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [join, setJoin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -224,13 +223,13 @@ function Home() {
               setBusy(false);
               setTgBoot(false);
               setProfileOpen(true);
-              setProfileHint("Telegram привязан. Можно закрыть Mini App и вернуться в браузер.");
+              setProfileHint(t("home.hint.linkSuccessCloseApp"));
               return;
             }
             setError(
               claimed.error === "expired"
-                ? "Ссылка привязки устарела — начните снова из браузера."
-                : "Не удалось привязать Telegram. Попробуйте ещё раз из браузера.",
+                ? t("home.hint.linkExpired")
+                : t("home.hint.linkFailed"),
             );
             setBusy(false);
             setTgBoot(false);
@@ -249,7 +248,7 @@ function Home() {
           const snap = await loadWorldFromServer(inviteHost);
           if (cancelled) return;
           if (!snap.ok || snap.empty || !snap.world_id) {
-            setError("Остров хозяина ещё не сохранён. Попросите ссылку позже.");
+            setError(t("home.error.hostIslandNotSaved"));
             setBusy(false);
             setTgBoot(false);
             return;
@@ -292,7 +291,7 @@ function Home() {
         setTgBoot(false);
       } catch {
         if (!cancelled) {
-          setError("Не удалось загрузить мир из Telegram. Попробуйте ещё раз.");
+          setError(t("home.error.tgLoadFailed"));
           setBusy(false);
           setTgBoot(false);
         }
@@ -305,7 +304,7 @@ function Home() {
 
   const openCreate = () => {
     if (atWorldCap) {
-      setError(`Лимит: максимум ${MAX_WORLDS_PER_ACCOUNT} мира на аккаунт`);
+      setError(t("home.error.worldLimit", { max: MAX_WORLDS_PER_ACCOUNT }));
       return;
     }
     setDraftName("");
@@ -337,9 +336,9 @@ function Home() {
       await saveUserSettings({
         data: { playerId: getPlayerId(), settings: payload },
       });
-      setSettingsHint("сохранено");
+      setSettingsHint(t("common.saved"));
     } catch {
-      setSettingsHint("не удалось сохранить");
+      setSettingsHint(t("common.saveFailed"));
     } finally {
       setSettingsSaving(false);
       window.setTimeout(() => setSettingsHint(null), 2200);
@@ -368,7 +367,7 @@ function Home() {
       if (pid.startsWith("tg_")) {
         setAccountLinked(true);
         setTgPlayerId(pid);
-        setProfileHint("Вы уже в Telegram Mini App.");
+        setProfileHint(t("home.hint.alreadyInMiniApp"));
         setLinkBusy(false);
         return;
       }
@@ -376,14 +375,14 @@ function Home() {
       if (!created.ok) {
         setProfileHint(
           created.error === "already_linked"
-            ? "Telegram уже привязан."
-            : "Не удалось начать привязку.",
+            ? t("home.hint.alreadyLinked")
+            : t("home.hint.linkStartFailed"),
         );
         setLinkBusy(false);
         return;
       }
       const url = fridayAccountLinkUrl(created.token);
-      setProfileHint("Откройте ссылку в Telegram и подтвердите вход…");
+      setProfileHint(t("home.hint.openTelegramLink"));
       window.open(url, "_blank", "noopener,noreferrer");
       const token = created.token;
       const started = Date.now();
@@ -394,22 +393,22 @@ function Home() {
           adoptPlayerId(poll.tgPlayerId);
           setAccountLinked(true);
           setTgPlayerId(poll.tgPlayerId);
-          setProfileHint("Telegram привязан.");
+          setProfileHint(t("home.hint.linkSuccess"));
           setWorlds(listSavedWorlds());
           setLinkBusy(false);
           return;
         }
         if (poll.status === "error") {
           setProfileHint(
-            poll.error === "expired" ? "Время вышло — нажмите ещё раз." : "Ошибка привязки.",
+            poll.error === "expired" ? t("home.hint.linkTimeout") : t("home.hint.linkError"),
           );
           setLinkBusy(false);
           return;
         }
       }
-      setProfileHint("Время вышло — нажмите ещё раз.");
+      setProfileHint(t("home.hint.linkTimeout"));
     } catch {
-      setProfileHint("Не удалось привязать Telegram.");
+      setProfileHint(t("home.hint.linkFailedGeneric"));
     } finally {
       setLinkBusy(false);
     }
@@ -417,12 +416,12 @@ function Home() {
 
   const onCreate = async () => {
     if (draftSlug.trim() && !ISLAND_SLUG_RE.test(draftSlug.trim().toLowerCase())) {
-      setError("ID острова: латиница, 3–24 символа (начинается с буквы)");
+      setError(t("home.error.slugInvalid"));
       return;
     }
     const pid = getPlayerId();
     if (pid === "p-tgpending" || pid === "p-ssr") {
-      setError("Telegram ещё загружается — подожди секунду и нажми ещё раз.");
+      setError(t("home.error.telegramLoading"));
       return;
     }
     setBusy(true);
@@ -443,7 +442,7 @@ function Home() {
       setError(
         msg && msg.length < 160
           ? msg
-          : "Не удалось создать мир. Проверьте SQLite (data/local.db).",
+          : t("home.error.createFailed"),
       );
       setBusy(false);
     }
@@ -453,7 +452,7 @@ function Home() {
     e.preventDefault();
     const code = parseJoinCode(join);
     if (!code) {
-      setError("Вставьте ссылку, код мира или ID острова.");
+      setError(t("home.error.joinEmpty"));
       return;
     }
     setBusy(true);
@@ -461,13 +460,13 @@ function Home() {
     try {
       const resolved = await resolveWorldId({ data: { code } });
       if ("error" in resolved) {
-        setError("Мир не найден.");
+        setError(t("home.error.worldNotFound"));
         setBusy(false);
         return;
       }
       await navigate({ to: "/world/$worldId", params: { worldId: resolved.id } });
     } catch {
-      setError("Не удалось войти в мир.");
+      setError(t("home.error.joinFailed"));
       setBusy(false);
     }
   };
@@ -499,7 +498,7 @@ function Home() {
             setRemoving(false);
             return;
           }
-          setError("Не удалось удалить мир.");
+          setError(t("home.error.deleteFailed"));
           setRemoving(false);
           return;
         }
@@ -508,7 +507,7 @@ function Home() {
       setWorlds(listSavedWorlds());
       setConfirmId(null);
     } catch {
-      setError("Не удалось удалить мир. Попробуйте ещё раз.");
+      setError(t("home.error.deleteFailedRetry"));
     }
     setRemoving(false);
   };
@@ -523,7 +522,7 @@ function Home() {
   const onSaveMeta = async () => {
     if (!editWorld) return;
     if (draftSlug.trim() && !ISLAND_SLUG_RE.test(draftSlug.trim().toLowerCase())) {
-      setError("ID острова: латиница, 3–24 символа (начинается с буквы)");
+      setError(t("home.error.slugInvalid"));
       return;
     }
     setBusy(true);
@@ -540,10 +539,10 @@ function Home() {
       if (!r.ok) {
         setError(
           r.error === "slug_taken"
-            ? "Такой ID острова уже занят"
+            ? t("home.error.slugTaken")
             : r.error === "slug_invalid"
-              ? "Некорректный ID острова"
-              : "Не удалось сохранить",
+              ? t("home.error.slugInvalidServer")
+              : t("common.saveFailed"),
         );
         setBusy(false);
         return;
@@ -553,7 +552,7 @@ function Home() {
       setEditWorld(null);
       setBusy(false);
     } catch {
-      setError("Не удалось сохранить настройки мира.");
+      setError(t("home.error.saveMetaFailed"));
       setBusy(false);
     }
   };
@@ -579,19 +578,19 @@ function Home() {
             <Input
               value={join}
               onChange={(ev) => setJoin(ev.target.value)}
-              placeholder="Ссылка или код"
-              aria-label="Код мира"
+              placeholder={t("home.join.placeholder")}
+              aria-label={t("home.join.ariaLabel")}
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
               className="shadow-none"
             />
             <Button type="submit" className="peep-home-join-btn shadow-none" disabled={busy}>
-              Войти
+              {t("home.join.submit")}
             </Button>
             <button
               type="button"
-              aria-label="Профиль"
+              aria-label={t("home.profile.ariaLabel")}
               className="peep-home-gear"
               onClick={openProfile}
             >
@@ -599,7 +598,7 @@ function Home() {
             </button>
             <button
               type="button"
-              aria-label="Настройки"
+              aria-label={t("home.settings.ariaLabel")}
               className="peep-home-gear"
               onClick={openSettings}
             >
@@ -618,15 +617,15 @@ function Home() {
             }
             onClick={openCreate}
             disabled={busy || atWorldCap}
-            title={atWorldCap ? `Максимум ${MAX_WORLDS_PER_ACCOUNT} мира` : undefined}
+            title={atWorldCap ? t("home.createWorld.maxTitle", { max: MAX_WORLDS_PER_ACCOUNT }) : undefined}
           >
-            {busy ? "Создаём…" : "Создать мир"}
+            {busy ? t("home.createWorld.busy") : t("home.createWorld")}
           </Button>
 
           {sortedWorlds.length > 0 ? (
             <section className="peep-home-worlds">
               <p className="peep-home-worlds-head mb-2">
-                Мои миры <span>›</span>
+                {t("home.worlds.title")} <span>›</span>
               </p>
               <div className="peep-home-worlds-rail">
                 {sortedWorlds.map((w) => (
@@ -641,8 +640,8 @@ function Home() {
                       <div className="flex h-full min-h-[5.5rem] flex-col justify-between p-3">
                         <p className="text-sm font-medium leading-snug">
                           {w.role === "mine"
-                            ? `Удалить ${worldLabel(w)}?`
-                            : `Убрать ${worldLabel(w)} из списка?`}
+                            ? t("home.world.deleteConfirmOwner", { name: worldLabel(w) })
+                            : t("home.world.removeConfirmGuest", { name: worldLabel(w) })}
                         </p>
                         <div className="mt-3 flex gap-2">
                           <Button
@@ -652,7 +651,7 @@ function Home() {
                             disabled={removing}
                             onClick={() => setConfirmId(null)}
                           >
-                            Отмена
+                            {t("common.cancel")}
                           </Button>
                           <Button
                             type="button"
@@ -660,7 +659,7 @@ function Home() {
                             disabled={removing}
                             onClick={() => void onRemove(w)}
                           >
-                            {removing ? "…" : "Удалить"}
+                            {removing ? "…" : t("home.world.delete")}
                           </Button>
                         </div>
                       </div>
@@ -675,11 +674,11 @@ function Home() {
                           <span className="peep-world-meta">
                             <span className="peep-world-title">
                               <strong>{worldLabel(w)}</strong>
-                              {w.role === "mine" ? <span className="peep-world-badge">мой</span> : null}
+                              {w.role === "mine" ? <span className="peep-world-badge">{t("home.world.badgeMine")}</span> : null}
                             </span>
-                            <span className="peep-world-sub">{formatCreated(w.at)}</span>
+                            <span className="peep-world-sub">{formatCreated(w.at, t)}</span>
                             <span className="peep-world-sub">
-                              {w.role === "mine" ? "хозяин" : "гость"}
+                              {w.role === "mine" ? t("home.world.roleOwner") : t("home.world.roleGuest")}
                               {w.slug ? ` · ${w.slug}` : ""}
                             </span>
                           </span>
@@ -691,7 +690,7 @@ function Home() {
                           {w.role === "mine" ? (
                             <button
                               type="button"
-                              aria-label={`Настройки ${worldLabel(w)}`}
+                              aria-label={t("home.world.settingsAria", { name: worldLabel(w) })}
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -703,7 +702,7 @@ function Home() {
                           ) : null}
                           <button
                             type="button"
-                            aria-label={`Удалить ${worldLabel(w)}`}
+                            aria-label={t("home.world.deleteAria", { name: worldLabel(w) })}
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -720,26 +719,26 @@ function Home() {
               </div>
             </section>
           ) : (
-            <p className="font-mono text-xs text-white/50">Пока нет миров — создай первый остров.</p>
+            <p className="font-mono text-xs text-white/50">{t("home.worlds.empty")}</p>
           )}
 
           {nudge && !install.installed ? (
             <aside className="flex shrink-0 items-start gap-3 rounded-2xl border border-white/15 bg-white/8 p-3">
               <IconPhone className="mt-0.5 size-5 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="font-display text-sm font-bold leading-tight">На главный экран</p>
+                <p className="font-display text-sm font-bold leading-tight">{t("home.install.title")}</p>
                 <button
                   type="button"
                   onClick={() => void install.addToHome()}
                   className="mt-2 font-mono text-xs font-bold uppercase tracking-wide underline"
                 >
-                  {install.canNative ? "добавить" : "как поставить"}
+                  {install.canNative ? t("home.install.addNative") : t("home.install.howTo")}
                 </button>
               </div>
               <button
                 type="button"
                 onClick={hideNudge}
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 shrink-0 items-center justify-center"
               >
                 <IconClose className="size-4" />
@@ -752,7 +751,7 @@ function Home() {
           <footer className="peep-home-footer">
             <Link to="/editor" className="peep-home-forge">
               <IconHammer className="size-4" />
-              Кузница
+              {t("home.forgeLink")}
             </Link>
             <a
               href="https://t.me/peepland"
@@ -771,10 +770,10 @@ function Home() {
         <div className="peep-safe absolute inset-0 z-[300] flex items-center justify-center bg-black/70">
           <div className="peep-sheet">
             <div className="peep-sheet-head">
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">новый мир</p>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">{t("home.createSheet.title")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 items-center justify-center"
                 onClick={() => setCreateOpen(false)}
               >
@@ -782,25 +781,25 @@ function Home() {
               </button>
             </div>
             <div className="peep-sheet-body">
-              <p className="text-sm">Поля необязательны — можно пропустить.</p>
+              <p className="text-sm">{t("home.createSheet.hint")}</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">название</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">{t("home.createSheet.nameLabel")}</span>
                   <Input
                     value={draftName}
                     onChange={(e) => setDraftName(e.target.value)}
                     maxLength={48}
-                    placeholder="необязательно"
+                    placeholder={t("home.createSheet.namePlaceholder")}
                     className="mt-1 rounded-xl border border-white/20 shadow-none"
                   />
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">id острова</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">{t("home.createSheet.slugLabel")}</span>
                   <Input
                     value={draftSlug}
                     onChange={(e) => setDraftSlug(e.target.value.toLowerCase())}
                     maxLength={24}
-                    placeholder="латиница"
+                    placeholder={t("home.createSheet.slugPlaceholder")}
                     autoCapitalize="off"
                     className="mt-1 rounded-xl border border-white/20 font-mono shadow-none"
                   />
@@ -814,7 +813,7 @@ function Home() {
                   disabled={busy}
                   onClick={() => setCreateOpen(false)}
                 >
-                  отмена
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -822,7 +821,7 @@ function Home() {
                   disabled={busy}
                   onClick={() => void onCreate()}
                 >
-                  {busy ? "…" : "создать"}
+                  {busy ? "…" : t("home.createSheet.submit")}
                 </Button>
               </div>
             </div>
@@ -834,10 +833,10 @@ function Home() {
         <div className="peep-safe absolute inset-0 z-[300] flex items-center justify-center bg-black/70">
           <div className="peep-sheet">
             <div className="peep-sheet-head">
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">настройки мира</p>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">{t("home.editSheet.title")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 items-center justify-center"
                 onClick={() => setEditWorld(null)}
               >
@@ -845,10 +844,10 @@ function Home() {
               </button>
             </div>
             <div className="peep-sheet-body">
-              <p className="font-mono text-xs text-fg/70">системный id · {editWorld.id}</p>
+              <p className="font-mono text-xs text-fg/70">{t("home.editSheet.systemId", { id: editWorld.id })}</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">название</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">{t("home.createSheet.nameLabel")}</span>
                   <Input
                     value={draftName}
                     onChange={(e) => setDraftName(e.target.value)}
@@ -857,7 +856,7 @@ function Home() {
                   />
                 </label>
                 <label className="block">
-                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">id острова</span>
+                  <span className="font-mono text-[10px] font-bold uppercase tracking-wide">{t("home.createSheet.slugLabel")}</span>
                   <Input
                     value={draftSlug}
                     onChange={(e) => setDraftSlug(e.target.value.toLowerCase())}
@@ -875,7 +874,7 @@ function Home() {
                   disabled={busy}
                   onClick={() => setEditWorld(null)}
                 >
-                  отмена
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   type="button"
@@ -883,7 +882,7 @@ function Home() {
                   disabled={busy}
                   onClick={() => void onSaveMeta()}
                 >
-                  {busy ? "…" : "сохранить"}
+                  {busy ? "…" : t("common.save")}
                 </Button>
               </div>
             </div>
@@ -898,10 +897,10 @@ function Home() {
         >
           <div className="peep-sheet peep-sheet-solid" onClick={(e) => e.stopPropagation()}>
             <div className="peep-sheet-head">
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">настройки</p>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">{t("home.settingsSheet.title")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 items-center justify-center"
                 onClick={() => setSettingsOpen(false)}
               >
@@ -909,8 +908,9 @@ function Home() {
               </button>
             </div>
             <div className="peep-sheet-body peep-sheet-body-solid space-y-3">
+              <LanguageSwitch />
               <p className="text-sm leading-relaxed text-muted">
-                Меню и игра всегда в альбоме. Бинды стройки сохраняются на сервере.
+                {t("home.settingsSheet.landscapeHint")}
               </p>
               {!phone ? (
                 <KeyboardBindsPanel
@@ -920,7 +920,7 @@ function Home() {
                 />
               ) : (
                 <p className="font-mono text-[11px] uppercase tracking-wide text-muted">
-                  На телефоне управление тачем — бинды клавиатуры на ПК.
+                  {t("home.settingsSheet.phoneKeybindHint")}
                 </p>
               )}
             </div>
@@ -936,7 +936,7 @@ function Home() {
                 disabled={settingsSaving}
                 onClick={() => void onSaveSettings()}
               >
-                {settingsSaving ? "…" : "Сохранить"}
+                {settingsSaving ? "…" : t("common.saveCapitalized")}
               </Button>
             </div>
           </div>
@@ -950,10 +950,10 @@ function Home() {
         >
           <div className="peep-sheet peep-sheet-solid" onClick={(e) => e.stopPropagation()}>
             <div className="peep-sheet-head">
-              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">профиль</p>
+              <p className="font-mono text-xs font-bold uppercase tracking-[0.18em]">{t("home.profileSheet.title")}</p>
               <button
                 type="button"
-                aria-label="Закрыть"
+                aria-label={t("common.close")}
                 className="flex size-10 items-center justify-center"
                 onClick={() => setProfileOpen(false)}
               >
@@ -963,11 +963,11 @@ function Home() {
             <div className="peep-sheet-body peep-sheet-body-solid space-y-3">
               <p className="text-sm leading-relaxed text-muted">
                 {accountLinked || getTelegramSaveId()
-                  ? "Telegram привязан — миры и сохранения идут на этот аккаунт."
-                  : "Зашли через браузер? Привяжите Telegram, чтобы не потерять миры."}
+                  ? t("home.profileSheet.linked")
+                  : t("home.profileSheet.browserPrompt")}
               </p>
               <p className="font-mono text-[10px] uppercase tracking-wide text-muted">
-                id · {tgPlayerId ?? getPlayerId()}
+                {t("home.profileSheet.idLine", { id: tgPlayerId ?? getPlayerId() })}
               </p>
               {profileHint ? (
                 <p className="text-sm text-[#7dff8a]">{profileHint}</p>
@@ -979,11 +979,11 @@ function Home() {
                   disabled={linkBusy}
                   onClick={() => void startLinkTelegram()}
                 >
-                  {linkBusy ? "ждём Telegram…" : "Привязать Telegram"}
+                  {linkBusy ? t("home.profileSheet.linkWaiting") : t("home.profileSheet.linkButton")}
                 </Button>
               ) : (
                 <p className="font-mono text-xs uppercase tracking-wide text-[#7dff8a]">
-                  аккаунт связан
+                  {t("home.profileSheet.accountLinked")}
                 </p>
               )}
             </div>
