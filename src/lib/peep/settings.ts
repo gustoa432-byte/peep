@@ -67,23 +67,24 @@ export function useMatchMedia(query: string) {
   return hit;
 }
 
-/** True phone / touch-first UI — not a desktop with an optional touchscreen. */
+/** True phone / touch-first UI — hardware mouse always wins over TG platform string. */
 export function usePhoneUi() {
   const [phone, setPhone] = useState(() => {
     if (typeof window === "undefined") return false;
+    // Если есть точная мышь — это НЕ телефон, даже если ТГ врет!
+    if (window.matchMedia("(pointer: fine)").matches) return false;
     if (isTelegramDesktopPlatform()) return false;
-    // TG iOS/Android WebViews often lie about pointer:fine — keep touch HUD.
     if (isTelegramMobilePlatform()) return true;
-    const fine = window.matchMedia("(pointer: fine)").matches;
-    if (fine) return false;
-    return window.matchMedia("(pointer: coarse)").matches || window.matchMedia("(max-width: 767px)").matches;
+    return window.matchMedia("(pointer: coarse)").matches;
   });
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const coarse = window.matchMedia("(pointer: coarse)");
-    const narrow = window.matchMedia("(max-width: 767px)");
     const sync = () => {
-      // TG Desktop Mini App must stay on desktop controls (WASD + soft look).
+      if (fine.matches) {
+        setPhone(false);
+        return;
+      }
       if (isTelegramDesktopPlatform()) {
         setPhone(false);
         return;
@@ -92,8 +93,7 @@ export function usePhoneUi() {
         setPhone(true);
         return;
       }
-      // Mouse/trackpad → always desktop HUD, even on touchscreen laptops.
-      setPhone(fine.matches ? false : coarse.matches || narrow.matches);
+      setPhone(coarse.matches);
     };
     sync();
     // TG platform often arrives after first paint — re-check shortly.
@@ -101,30 +101,33 @@ export function usePhoneUi() {
     const t1 = window.setTimeout(sync, 250);
     fine.addEventListener("change", sync);
     coarse.addEventListener("change", sync);
-    narrow.addEventListener("change", sync);
     return () => {
       window.clearTimeout(t0);
       window.clearTimeout(t1);
       fine.removeEventListener("change", sync);
       coarse.removeEventListener("change", sync);
-      narrow.removeEventListener("change", sync);
     };
   }, []);
   return phone;
 }
 
-/** Desktop mouse look (TG Desktop / fine pointer) — never mount LookSurface / sticks. */
+/** Desktop mouse look — never mount LookSurface / sticks when fine pointer is present. */
 export function useDesktopMouseUi() {
   const phone = usePhoneUi();
   const [desktop, setDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
+    if (window.matchMedia("(pointer: fine)").matches) return true;
     if (isTelegramDesktopPlatform()) return true;
     if (isTelegramMobilePlatform()) return false;
-    return window.matchMedia("(pointer: fine)").matches;
+    return false;
   });
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const sync = () => {
+      if (fine.matches) {
+        setDesktop(true);
+        return;
+      }
       if (isTelegramDesktopPlatform()) {
         setDesktop(true);
         return;
@@ -133,7 +136,7 @@ export function useDesktopMouseUi() {
         setDesktop(false);
         return;
       }
-      setDesktop(fine.matches);
+      setDesktop(false);
     };
     sync();
     const t0 = window.setTimeout(sync, 0);

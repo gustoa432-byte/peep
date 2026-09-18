@@ -103,19 +103,12 @@ export function isTelegramDesktopPlatform(): boolean {
   return p === "tdesktop" || p === "macos" || p === "windows" || p === "linux";
 }
 
-/** Phone Telegram clients — always use touch pads + place hint. */
+/** Phone Telegram clients — native mobile only (not Telegram Web weba/webk). */
 export function isTelegramMobilePlatform(): boolean {
   const wa = getTelegramWebApp();
   const p = wa?.platform?.toLowerCase()?.trim();
   if (!p) return false;
-  return (
-    p === "ios" ||
-    p === "android" ||
-    p === "android_x" ||
-    // Legacy / WebApp-in-mobile-browser shells that still ship as TMA.
-    p === "weba" ||
-    p === "webk"
-  );
+  return p === "ios" || p === "android" || p === "android_x";
 }
 
 /** @deprecated Hold-LMB drag look removed for mouse; touch pads only. */

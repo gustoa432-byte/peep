@@ -1375,11 +1375,13 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     return document.pointerLockElement === this.opts.canvas;
   }
 
-  /** Fine pointer desktop, or Telegram Desktop clients (tdesktop/macos/windows/linux). */
+  /** Hardware mouse first; then native TG desktop clients. */
   private wantsDesktopLock(): boolean {
-    if (isTelegramMobilePlatform()) return false;
+    // 1. Аппаратная мышь — абсолютный приоритет
+    if (window.matchMedia("(pointer: fine)").matches) return true;
+    // 2. Фолбэк для нативного десктопа
     if (isTelegramDesktopPlatform()) return true;
-    return window.matchMedia("(pointer: fine)").matches;
+    return false;
   }
 
   private applyAimCursor() {
