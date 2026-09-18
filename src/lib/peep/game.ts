@@ -1223,8 +1223,6 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     const c = this.opts.canvas;
     this.onKeyDown = this.onKeyDown.bind(this);
     this.onKeyUp = this.onKeyUp.bind(this);
-    this.onMouseMove = this.onMouseMove.bind(this);
-    this.onCanvasMouseMove = this.onCanvasMouseMove.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
     this.onContext = this.onContext.bind(this);
@@ -1243,9 +1241,9 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.addEventListener("resize", this.onOrient);
     document.addEventListener("pointerlockchange", this.onLock);
     document.addEventListener("pointerlockerror", this.onLockError);
-    // Pointer Lock: document mousemove. Free-look: canvas mousemove (always tracks lastX/Y).
-    document.addEventListener("mousemove", this.onMouseMove);
-    c.addEventListener("mousemove", this.onCanvasMouseMove);
+    // Global pointermove: HUD overlays must not steal canvas mousemove (TG Desktop).
+    window.addEventListener("pointermove", this.onGlobalPointerMove);
+    window.addEventListener("pointerleave", this.onGlobalPointerLeave);
     c.addEventListener("click", this.onCanvasClick);
     c.addEventListener("pointerdown", this.onPointerDown);
     window.addEventListener("pointerup", this.onPointerUp);
@@ -1267,8 +1265,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.removeEventListener("resize", this.onOrient);
     document.removeEventListener("pointerlockchange", this.onLock);
     document.removeEventListener("pointerlockerror", this.onLockError);
-    document.removeEventListener("mousemove", this.onMouseMove);
-    c.removeEventListener("mousemove", this.onCanvasMouseMove);
+    window.removeEventListener("pointermove", this.onGlobalPointerMove);
+    window.removeEventListener("pointerleave", this.onGlobalPointerLeave);
     c.removeEventListener("click", this.onCanvasClick);
     c.removeEventListener("pointerdown", this.onPointerDown);
     window.removeEventListener("pointerup", this.onPointerUp);
@@ -1446,58 +1444,48 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.tryLock();
   }
 
-  /**
-   * Desktop free-look (TG Desktop / fine pointer).
-   * Linear: move → delta from lastX/Y → yaw/pitch → save lastX/Y.
-   * Never gated on buttons, dragging, or aimEngaged.
-   */
-  private desktopFreeLook(clientX: number, clientY: number, movementX: number, movementY: number) {
-    if (isTelegramMobilePlatform()) return;
-    if (!this.wantsDesktopLock() && !this.isLocked()) return;
+  private onGlobalPointerLeave = () => {
+    this.lastMouseX = undefined;
+    this.lastMouseY = undefined;
+  };
 
-    if (this.lastMouseX === undefined || this.lastMouseY === undefined) {
-      this.lastMouseX = clientX;
-      this.lastMouseY = clientY;
+  /**
+   * Window-level pointermove — survives HUD overlays / implicit pointer capture.
+   * Pointer Lock uses movementX; TG Desktop bypass uses clientX delta while aimEngaged.
+   */
+  private onGlobalPointerMove = (e: PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+
+    // 1. СТАНДАРТНЫЙ POINTER LOCK (Если сработал)
+    if (this.isLocked()) {
+      if (!this.playing || this.inputBlocked()) return;
+      this.lookDelta(e.movementX, e.movementY);
       return;
     }
 
-    let mx: number;
-    let my: number;
-    if (this.isLocked()) {
-      mx = movementX;
-      my = movementY;
-    } else if (movementX !== 0 || movementY !== 0) {
-      mx = movementX;
-      my = movementY;
-    } else {
-      // TG Desktop zeros movementX unless a button is held — use client delta.
-      mx = clientX - this.lastMouseX;
-      my = clientY - this.lastMouseY;
+    // 2. BYPASS ДЛЯ TELEGRAM DESKTOP
+    if (!this.wantsDesktopLock()) return;
+
+    // Крутим камеру ТОЛЬКО если курсор скрыт (режим игры, а не меню)
+    if (!this.aimEngaged) return;
+
+    if (this.lastMouseX === undefined || this.lastMouseY === undefined) {
+      this.lastMouseX = e.clientX;
+      this.lastMouseY = e.clientY;
+      return;
     }
 
-    // ALWAYS refresh sample at end of move — never only on mousedown.
-    this.lastMouseX = clientX;
-    this.lastMouseY = clientY;
+    const mx = e.clientX - this.lastMouseX;
+    const my = e.clientY - this.lastMouseY;
+
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
 
     if (!this.playing || this.inputBlocked()) return;
     if (mx === 0 && my === 0) return;
+
     this.lookDelta(mx, my);
-  }
-
-  /** Pointer Lock path only — free-look lives on canvas mousemove. */
-  private onMouseMove(e: MouseEvent) {
-    if (!this.isLocked()) return;
-    if (!this.playing || this.inputBlocked()) return;
-    this.lookDelta(e.movementX, e.movementY);
-  }
-
-  /**
-   * Canvas mousemove free-look. Tracks lastX/Y every frame — no buttons, no dragging.
-   */
-  private onCanvasMouseMove(e: MouseEvent) {
-    if (this.isLocked()) return;
-    this.desktopFreeLook(e.clientX, e.clientY, e.movementX, e.movementY);
-  }
+  };
 
   private lookDelta(dx: number, dy: number) {
     this.yaw -= dx * LOOK_SENS;
