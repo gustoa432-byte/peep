@@ -313,6 +313,37 @@ export function WorldStage({
         </div>
       ) : null}
 
+      {hud.playing && hud.lockDenied && desktopMouse ? (
+        <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/80 text-white backdrop-blur-sm">
+          <div className="max-w-sm rounded-2xl border border-zinc-700 bg-zinc-900 p-6 text-center">
+            <h2 className="mb-3 text-xl font-bold">Ограничение Telegram Web</h2>
+            <p className="mb-6 text-sm text-zinc-400">
+              Веб-версия Telegram блокирует захват мыши для 3D-игр. Чтобы свободно
+              осматриваться (360°), откройте игру в полноценном браузере или используйте
+              приложение Telegram Desktop.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                const tg = (
+                  window as unknown as {
+                    Telegram?: { WebApp?: { openLink?: (url: string) => void } };
+                  }
+                ).Telegram?.WebApp;
+                if (tg?.openLink) {
+                  tg.openLink("https://peepland.ru");
+                } else {
+                  window.open("https://peepland.ru", "_blank");
+                }
+              }}
+              className="w-full rounded-xl bg-white px-6 py-2 font-bold text-black hover:bg-zinc-200"
+            >
+              Открыть в браузере
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {hud.playing && !hud.cinematicActive && !hudOverlay && showTouchPads ? (
         <>
           <div className="pointer-events-none absolute inset-0 z-20">

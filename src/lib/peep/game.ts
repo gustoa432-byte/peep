@@ -1386,14 +1386,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
 
   private applyAimCursor() {
     const c = this.opts.canvas;
-    if (this.isLocked() || this.aimEngaged) {
-      // CEF bypass: transparent GIF keeps mouse-move events flowing (cursor:none stalls them).
-      if (isTelegramDesktopPlatform() && !this.isLocked()) {
-        c.style.cursor =
-          "url(data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==), auto";
-      } else {
-        c.style.cursor = "none";
-      }
+    if (this.isLocked()) {
+      c.style.cursor = "none";
       c.classList.add("peep-aim-cursor");
     } else {
       c.style.cursor = "";
@@ -1409,7 +1403,6 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
 
   private disengageAim() {
     this.aimEngaged = false;
-    // Reseed on next move — cursor may have jumped while free.
     this.lastMouseX = undefined;
     this.lastMouseY = undefined;
     this.applyAimCursor();
@@ -1438,6 +1431,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.pointerLocked = false;
     this.pointerLockDenied = true;
     this.dragging = false;
+    this.disengageAim();
     this.applyAimCursor();
     this.hudDirty = true;
   }
@@ -1452,43 +1446,12 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.tryLock();
   }
 
-  /**
-   * Window capture mousemove — survives HUD overlays.
-   * Pointer Lock uses movementX; TG Desktop bypass uses clientX delta while aimEngaged.
-   */
+  /** Look only with Pointer Lock — no free-look / button-drag fallback. */
   private onGlobalPointerMove = (e: MouseEvent) => {
-    // Безопасная проверка для MouseEvent:
     if ("pointerType" in e && (e as PointerEvent).pointerType === "touch") return;
-
-    // 1. СТАНДАРТНЫЙ POINTER LOCK (Если сработал)
-    if (this.isLocked()) {
-      if (!this.playing || this.inputBlocked()) return;
-      this.lookDelta(e.movementX, e.movementY);
-      return;
-    }
-
-    // 2. BYPASS ДЛЯ TELEGRAM DESKTOP
-    if (!this.wantsDesktopLock()) return;
-
-    // Крутим камеру ТОЛЬКО если курсор скрыт (режим игры, а не меню)
-    if (!this.aimEngaged) return;
-
-    if (this.lastMouseX === undefined || this.lastMouseY === undefined) {
-      this.lastMouseX = e.clientX;
-      this.lastMouseY = e.clientY;
-      return;
-    }
-
-    const mx = e.clientX - this.lastMouseX;
-    const my = e.clientY - this.lastMouseY;
-
-    this.lastMouseX = e.clientX;
-    this.lastMouseY = e.clientY;
-
+    if (!this.isLocked()) return;
     if (!this.playing || this.inputBlocked()) return;
-    if (mx === 0 && my === 0) return;
-
-    this.lookDelta(mx, my);
+    this.lookDelta(e.movementX, e.movementY);
   };
 
   private lookDelta(dx: number, dy: number) {
@@ -1548,13 +1511,23 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
   }
 
   /**
-   * Classic sync Pointer Lock — must run inside click/mousedown with no await/setTimeout.
+   * Classic sync Pointer Lock — must run inside click/mousedown with no await/setTimeout before the call.
+   * Promise rejection / silent iframe deny → onLockError (escape-hatch HUD).
    */
   private tryLock() {
     if (this.isLocked()) return;
     const el = this.opts.canvas;
     try {
-      el.requestPointerLock();
+      const result = el.requestPointerLock() as void | Promise<void>;
+      if (result && typeof (result as Promise<void>).then === "function") {
+        void (result as Promise<void>).catch(() => this.onLockError());
+      } else {
+        window.setTimeout(() => {
+          if (!this.isLocked() && this.aimEngaged && this.wantsDesktopLock()) {
+            this.onLockError();
+          }
+        }, 150);
+      }
     } catch {
       this.onLockError();
     }
