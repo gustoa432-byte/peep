@@ -1384,12 +1384,6 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     return window.matchMedia("(pointer: fine)").matches;
   }
 
-  /** Mouse / empty pointerType — never treat as touch swipe. */
-  private isMousePointer(e: { pointerType?: string }): boolean {
-    const t = e.pointerType ?? "";
-    return t === "mouse" || t === "" || t === "pen";
-  }
-
   private applyAimCursor() {
     const c = this.opts.canvas;
     if (this.isLocked() || this.aimEngaged) {
