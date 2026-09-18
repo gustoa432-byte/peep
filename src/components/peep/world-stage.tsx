@@ -26,7 +26,6 @@ import {
 import type { Story } from "@/lib/peep/progress";
 import { leaveWorld, trackEvent } from "@/lib/peep/world.functions";
 import type { BlockEdit, HudState } from "@/lib/peep/types";
-import { cn } from "@/lib/utils";
 
 const EMPTY_HUD: HudState = {
   palette: [...DEFAULT_HOTBAR],
