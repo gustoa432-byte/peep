@@ -67,20 +67,27 @@ export function useMatchMedia(query: string) {
   return hit;
 }
 
-/** True phone / touch-first UI — hardware mouse always wins over TG platform string. */
+/** True phone / touch-first UI.
+ * TG iOS/Android WebViews often lie about pointer:fine — platform wins there.
+ * Elsewhere, a real fine pointer (Telegram Web weba/webk on desktop) stays desktop.
+ */
 export function usePhoneUi() {
   const [phone, setPhone] = useState(() => {
     if (typeof window === "undefined") return false;
-    // Если есть точная мышь — это НЕ телефон, даже если ТГ врет!
+    // Native TG mobile first — PlaceHint / sticks must show in TMA on phones.
+    if (isTelegramMobilePlatform()) return true;
     if (window.matchMedia("(pointer: fine)").matches) return false;
     if (isTelegramDesktopPlatform()) return false;
-    if (isTelegramMobilePlatform()) return true;
     return window.matchMedia("(pointer: coarse)").matches;
   });
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const coarse = window.matchMedia("(pointer: coarse)");
     const sync = () => {
+      if (isTelegramMobilePlatform()) {
+        setPhone(true);
+        return;
+      }
       if (fine.matches) {
         setPhone(false);
         return;
@@ -89,14 +96,9 @@ export function usePhoneUi() {
         setPhone(false);
         return;
       }
-      if (isTelegramMobilePlatform()) {
-        setPhone(true);
-        return;
-      }
       setPhone(coarse.matches);
     };
     sync();
-    // TG platform often arrives after first paint — re-check shortly.
     const t0 = window.setTimeout(sync, 0);
     const t1 = window.setTimeout(sync, 250);
     fine.addEventListener("change", sync);
@@ -111,29 +113,29 @@ export function usePhoneUi() {
   return phone;
 }
 
-/** Desktop mouse look — never mount LookSurface / sticks when fine pointer is present. */
+/** Desktop mouse look — never mount LookSurface / sticks when fine pointer is present (except TG mobile). */
 export function useDesktopMouseUi() {
   const phone = usePhoneUi();
   const [desktop, setDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
+    if (isTelegramMobilePlatform()) return false;
     if (window.matchMedia("(pointer: fine)").matches) return true;
     if (isTelegramDesktopPlatform()) return true;
-    if (isTelegramMobilePlatform()) return false;
     return false;
   });
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const sync = () => {
+      if (isTelegramMobilePlatform()) {
+        setDesktop(false);
+        return;
+      }
       if (fine.matches) {
         setDesktop(true);
         return;
       }
       if (isTelegramDesktopPlatform()) {
         setDesktop(true);
-        return;
-      }
-      if (isTelegramMobilePlatform()) {
-        setDesktop(false);
         return;
       }
       setDesktop(false);

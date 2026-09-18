@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "@/lib/i18n/react";
 import { ItemEditor } from "@/lib/peep/item-editor";
 import { pushForgeInventoryItem } from "@/lib/peep/forge-inventory";
 import { FORGE_TEMPLATES, templateById } from "@/lib/peep/item-templates";
@@ -63,6 +64,7 @@ function writeSlider(t: ItemTransform, key: (typeof SLIDERS)[number]["key"], val
 }
 
 export function ItemForge() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const editorRef = useRef<ItemEditor | null>(null);
@@ -186,7 +188,7 @@ export function ItemForge() {
     } catch {
       seed = "";
     }
-    const raw = window.prompt("Вставьте JSON предмета", seed.startsWith("{") || seed.startsWith("[") ? seed : "");
+    const raw = window.prompt(t("forge.promptPaste"), seed.startsWith("{") || seed.startsWith("[") ? seed : "");
     if (raw == null) return;
     const text = raw.trim();
     if (!text) return;
@@ -197,14 +199,14 @@ export function ItemForge() {
       setLoaded(true);
       window.setTimeout(() => setLoaded(false), 1600);
     } catch {
-      window.alert("Не получилось прочитать JSON");
+      window.alert(t("forge.alertBadJson"));
     }
   };
 
   const clearAll = () => {
     const editor = editorRef.current;
     if (!editor) return;
-    if (!window.confirm("Точно удалить всё?")) return;
+    if (!window.confirm(t("forge.confirmClear"))) return;
     editor.clear();
   };
 
@@ -213,7 +215,7 @@ export function ItemForge() {
     const editor = editorRef.current;
     const voxels = templateById(id);
     if (!editor || !voxels) return;
-    if (editor.voxelsList().length && !window.confirm("Заменить текущую модель шаблоном?")) {
+    if (editor.voxelsList().length && !window.confirm(t("forge.confirmReplace"))) {
       setTemplate("");
       return;
     }
@@ -239,12 +241,14 @@ export function ItemForge() {
         className="peep-grip-tag pointer-events-none absolute z-10"
         style={{ left: "50%", top: "50%", opacity: 0 }}
       >
-        Точка хвата
+        {t("forge.gripTag")}
       </div>
 
       <header className="peep-forge-safe pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-3 !pb-0">
         <div className="pointer-events-auto flex min-w-0 flex-col gap-2">
-          <p className="font-mono text-xs font-medium uppercase tracking-widest text-muted-on-ink">кузница</p>
+          <p className="font-mono text-xs font-medium uppercase tracking-widest text-muted-on-ink">
+            {t("forge.title")}
+          </p>
           <div className="flex rounded-pixel border-2 border-fg-on-ink/20">
             <button
               type="button"
@@ -254,7 +258,7 @@ export function ItemForge() {
                 mode === "edit" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
               )}
             >
-              Редактор
+              {t("forge.tab.edit")}
             </button>
             <button
               type="button"
@@ -264,53 +268,51 @@ export function ItemForge() {
                 mode === "fit" ? "bg-primary text-primary-fg" : "text-fg-on-ink",
               )}
             >
-              Примерочная
+              {t("forge.tab.fit")}
             </button>
           </div>
           {mode === "edit" ? (
-            <p className="max-w-xs text-sm leading-snug text-fg-on-ink/80">
-              лкм — поставить · пкм — стереть · крути сцену мышью
-            </p>
+            <p className="max-w-xs text-sm leading-snug text-fg-on-ink/80">{t("forge.hint.edit")}</p>
           ) : (
-            <p className="max-w-xs text-sm leading-snug text-fg-on-ink/80">вид от первого лица · крути ползунки</p>
+            <p className="max-w-xs text-sm leading-snug text-fg-on-ink/80">{t("forge.hint.fit")}</p>
           )}
         </div>
         <div className="pointer-events-auto flex max-w-[min(100%,22rem)] flex-col items-end gap-2">
           <div className="flex flex-wrap justify-end gap-2">
             <Button asChild variant="ink" className="min-h-11 border-2 border-fg-on-ink/20">
               <Link to="/" onClick={leaveForge}>
-                назад в меню
+                {t("forge.backMenu")}
               </Link>
             </Button>
             <Button variant="default" className="min-h-11" onClick={saveAndExit}>
-              сохранить и выйти
+              {t("forge.saveExit")}
             </Button>
             <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => void copyJson()}>
-              {copied ? "скопировано" : "Copy to JSON"}
+              {copied ? t("forge.copied") : t("forge.copyJson")}
             </Button>
             <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => void pasteJson()}>
-              {loaded ? "загружено" : "Загрузить JSON"}
+              {loaded ? t("forge.loaded") : t("forge.loadJson")}
             </Button>
           </div>
           {mode === "edit" ? (
             <label className="flex min-h-11 items-center gap-2 border-2 border-fg-on-ink/20 bg-surface-ink/80 px-2 text-xs uppercase tracking-widest text-muted-on-ink">
-              шаблон
+              {t("forge.template")}
               <select
                 value={template}
                 onChange={(e) => applyTemplate(e.target.value)}
                 className="min-h-9 min-w-36 bg-transparent text-sm normal-case tracking-normal text-fg-on-ink"
               >
-                <option value="">загрузить шаблон</option>
-                {FORGE_TEMPLATES.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label}
+                <option value="">{t("forge.templateLoad")}</option>
+                {FORGE_TEMPLATES.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id}>
+                    {tpl.label}
                   </option>
                 ))}
               </select>
             </label>
           ) : (
             <Button variant="ink" className="min-h-11 border-2 border-fg-on-ink/20" onClick={() => editorRef.current?.playSwing()}>
-              Play Animation
+              {t("forge.playAnim")}
             </Button>
           )}
         </div>
@@ -339,7 +341,7 @@ export function ItemForge() {
                     !erase ? "border-primary bg-primary text-primary-fg" : "border-fg-on-ink/25 text-fg-on-ink",
                   )}
                 >
-                  ставить
+                  {t("forge.place")}
                 </button>
                 <button
                   type="button"
@@ -349,17 +351,17 @@ export function ItemForge() {
                     erase ? "border-primary bg-primary text-primary-fg" : "border-fg-on-ink/25 text-fg-on-ink",
                   )}
                 >
-                  стереть
+                  {t("forge.erase")}
                 </button>
                 <button
                   type="button"
                   onClick={clearAll}
                   className="min-h-11 rounded-pixel border-2 border-danger/70 px-3 font-mono text-sm tracking-wide text-fg-on-ink"
                 >
-                  Очистить всё
+                  {t("forge.clearAll")}
                 </button>
                 <span className="ml-auto font-mono text-xs uppercase tracking-widest text-muted-on-ink">
-                  {count} кл.
+                  {t("forge.cells", { count })}
                 </span>
               </div>
               <div className="flex items-start gap-2">
@@ -367,7 +369,7 @@ export function ItemForge() {
                   <input
                     type="color"
                     value={isAirColor(color) ? "#6a90b8" : color}
-                    aria-label="свой цвет"
+                    aria-label={t("forge.customColor")}
                     onChange={(e) => pickColor(e.target.value)}
                     className="peep-color-input"
                   />
@@ -377,14 +379,14 @@ export function ItemForge() {
                 </label>
                 <div className="min-w-0 flex-1">
                   <p className="mb-1 font-mono text-xs uppercase tracking-widest text-muted-on-ink">
-                    палитра · {palette.length}/{FORGE_PALETTE_MAX}
+                    {t("forge.palette", { n: palette.length, max: FORGE_PALETTE_MAX })}
                   </p>
                   <div className="flex max-h-28 flex-wrap content-start gap-1.5 overflow-y-auto">
                     {palette.map((hex) => (
                       <button
                         key={hex}
                         type="button"
-                        aria-label={isAirColor(hex) ? "пустой блок (air)" : hex}
+                        aria-label={isAirColor(hex) ? t("forge.airBlock") : hex}
                         aria-pressed={color === hex && !erase}
                         onClick={() => pickColor(hex)}
                         className={cn(

@@ -88,12 +88,9 @@ export const TROLL_SECTOR_RAD = Math.PI / 2;
 /** Fake boot gag over the world canvas. */
 export const BOOT_LOADER_S = 5;
 export const BOOT_TIP_S = 2;
-export const BOOT_TIPS = [
-  "не копай под себя",
-  "не выполняй квесты под водой",
-  "не смотри на пятницу",
-] as const;
-export const BOOT_FOOTER = "зы я сделал всьо чтобы эта игра лагала не благадарите";
+/** Intentionally empty — no rotating gag tips. */
+export const BOOT_TIPS = [] as const;
+export const BOOT_FOOTER = "";
 
 /** Host cinematic: Friday drops from the sky, then TNT “punishment”. */
 export const FRIDAY_FALL_HEIGHT = 18;

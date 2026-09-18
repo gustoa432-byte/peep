@@ -336,8 +336,12 @@ export function WorldStage({
             onBreakRelease={() => gameRef.current?.endBreak()}
             onJump={() => gameRef.current?.jump()}
           />
-          <PlaceHint placed={placed} mined={mined} orient={orient} force />
         </>
+      ) : null}
+
+      {/* Place hint follows phone UI (TG mobile), not nested under pads-only gate. */}
+      {hud.playing && !hud.cinematicActive && !hudOverlay && phone ? (
+        <PlaceHint placed={placed} mined={mined} orient={orient} force />
       ) : null}
 
       {!hud.playing && !lost && !bootLoading ? (

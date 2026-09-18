@@ -59,6 +59,7 @@ export function BootLoader({
   }, [progress]);
 
   useEffect(() => {
+    if (BOOT_TIPS.length === 0) return;
     const tipTimer = window.setInterval(() => {
       const next = nextHintIndex(lastHintIndex.current);
       lastHintIndex.current = next;
@@ -121,12 +122,14 @@ export function BootLoader({
           className="size-10 animate-spin rounded-full border-2 border-white/25 border-t-white"
           aria-hidden
         />
-        <p
-          key={tipIdx}
-          className="max-w-sm text-center font-mono text-sm font-medium uppercase tracking-wide text-white/90"
-        >
-          {BOOT_TIPS[tipIdx]}
-        </p>
+        {BOOT_TIPS.length > 0 ? (
+          <p
+            key={tipIdx}
+            className="max-w-sm text-center font-mono text-sm font-medium uppercase tracking-wide text-white/90"
+          >
+            {BOOT_TIPS[tipIdx]}
+          </p>
+        ) : null}
         <div className="w-full">
           <div className="h-2 w-full overflow-hidden rounded-pixel border border-white/30 bg-white/10">
             <div
@@ -139,9 +142,11 @@ export function BootLoader({
           </p>
         </div>
       </div>
-      <p className="absolute inset-x-4 bottom-6 text-center font-mono text-[10px] leading-snug tracking-wide text-white/45">
-        {BOOT_FOOTER}
-      </p>
+      {BOOT_FOOTER ? (
+        <p className="absolute inset-x-4 bottom-6 text-center font-mono text-[10px] leading-snug tracking-wide text-white/45">
+          {BOOT_FOOTER}
+        </p>
+      ) : null}
     </div>
   );
 }
