@@ -16,10 +16,11 @@ import { PeepGame, type ToolPoseExport } from "@/lib/peep/game";
 import { startLazySave } from "@/lib/peep/lazy-save";
 import { getTelegramSaveId } from "@/lib/peep/player-id";
 import { markSessionDone, minedBlockCount, placedBlockCount, recordMinedBlock, recordPlacedBlock } from "@/lib/peep/remember-world";
-import { lockOrient, unlockOrient, usePhoneUi } from "@/lib/peep/settings";
+import { lockOrient, unlockOrient, useDesktopMouseUi, usePhoneUi } from "@/lib/peep/settings";
 import {
   fridayInviteLink,
   initTelegramWebApp,
+  isTelegramDesktopPlatform,
   shareFridayInvite,
 } from "@/lib/peep/telegram";
 import type { Story } from "@/lib/peep/progress";
@@ -99,6 +100,8 @@ export function WorldStage({
   const [bootLoading, setBootLoading] = useState(true);
   const [bootProgress, setBootProgress] = useState(0.55);
   const phone = usePhoneUi();
+  const desktopMouse = useDesktopMouseUi();
+  const showTouchPads = phone && !desktopMouse && !isTelegramDesktopPlatform();
   const [hudOverlay, setHudOverlay] = useState(false);
   const [gripOpen, setGripOpen] = useState(false);
   const [toolPose, setToolPose] = useState<ToolPoseExport | null>(null);
@@ -311,9 +314,9 @@ export function WorldStage({
         </div>
       ) : null}
 
-      {hud.playing && !hud.cinematicActive && !hudOverlay ? (
+      {hud.playing && !hud.cinematicActive && !hudOverlay && showTouchPads ? (
         <>
-          <div className={cn("pointer-events-none absolute inset-0 z-20", phone ? "block" : "hidden")}>
+          <div className="pointer-events-none absolute inset-0 z-20">
             <LookSurface
               onLook={(dx, dy) => gameRef.current?.lookBy(dx, dy)}
               onHoldStart={() => gameRef.current?.beginPlace()}
@@ -322,14 +325,14 @@ export function WorldStage({
           </div>
           <TouchControls
             orient={orient}
-            force={phone}
+            force
             breakCharge={hud.breakCharge}
             onAxis={(x, z) => gameRef.current?.setMoveAxis(x, z)}
             onBreakHold={() => gameRef.current?.beginBreak()}
             onBreakRelease={() => gameRef.current?.endBreak()}
             onJump={() => gameRef.current?.jump()}
           />
-          <PlaceHint placed={placed} mined={mined} orient={orient} force={phone} />
+          <PlaceHint placed={placed} mined={mined} orient={orient} force />
         </>
       ) : null}
 

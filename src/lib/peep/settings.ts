@@ -96,14 +96,54 @@ export function usePhoneUi() {
       setPhone(fine.matches ? false : coarse.matches || narrow.matches);
     };
     sync();
+    // TG platform often arrives after first paint — re-check shortly.
+    const t0 = window.setTimeout(sync, 0);
+    const t1 = window.setTimeout(sync, 250);
     fine.addEventListener("change", sync);
     coarse.addEventListener("change", sync);
     narrow.addEventListener("change", sync);
     return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
       fine.removeEventListener("change", sync);
       coarse.removeEventListener("change", sync);
       narrow.removeEventListener("change", sync);
     };
   }, []);
   return phone;
+}
+
+/** Desktop mouse look (TG Desktop / fine pointer) — never mount LookSurface / sticks. */
+export function useDesktopMouseUi() {
+  const phone = usePhoneUi();
+  const [desktop, setDesktop] = useState(() => {
+    if (typeof window === "undefined") return true;
+    if (isTelegramDesktopPlatform()) return true;
+    if (isTelegramMobilePlatform()) return false;
+    return window.matchMedia("(pointer: fine)").matches;
+  });
+  useEffect(() => {
+    const fine = window.matchMedia("(pointer: fine)");
+    const sync = () => {
+      if (isTelegramDesktopPlatform()) {
+        setDesktop(true);
+        return;
+      }
+      if (isTelegramMobilePlatform()) {
+        setDesktop(false);
+        return;
+      }
+      setDesktop(fine.matches);
+    };
+    sync();
+    const t0 = window.setTimeout(sync, 0);
+    const t1 = window.setTimeout(sync, 250);
+    fine.addEventListener("change", sync);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+      fine.removeEventListener("change", sync);
+    };
+  }, []);
+  return desktop || !phone;
 }

@@ -1241,11 +1241,10 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.addEventListener("resize", this.onOrient);
     document.addEventListener("pointerlockchange", this.onLock);
     document.addEventListener("pointerlockerror", this.onLockError);
-    // Global pointermove: HUD overlays must not steal canvas mousemove (TG Desktop).
-    window.addEventListener("pointermove", this.onGlobalPointerMove);
-    window.addEventListener("pointerleave", this.onGlobalPointerLeave);
+    // Capture phase: HUD overlays must not swallow look / canvas engage.
+    window.addEventListener("pointermove", this.onGlobalPointerMove, true);
+    window.addEventListener("pointerdown", this.onPointerDown, true);
     c.addEventListener("click", this.onCanvasClick);
-    c.addEventListener("pointerdown", this.onPointerDown);
     window.addEventListener("pointerup", this.onPointerUp);
     window.addEventListener("pointercancel", this.onPointerUp);
     c.addEventListener("contextmenu", this.onContext);
@@ -1265,10 +1264,9 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.removeEventListener("resize", this.onOrient);
     document.removeEventListener("pointerlockchange", this.onLock);
     document.removeEventListener("pointerlockerror", this.onLockError);
-    window.removeEventListener("pointermove", this.onGlobalPointerMove);
-    window.removeEventListener("pointerleave", this.onGlobalPointerLeave);
+    window.removeEventListener("pointermove", this.onGlobalPointerMove, true);
+    window.removeEventListener("pointerdown", this.onPointerDown, true);
     c.removeEventListener("click", this.onCanvasClick);
-    c.removeEventListener("pointerdown", this.onPointerDown);
     window.removeEventListener("pointerup", this.onPointerUp);
     window.removeEventListener("pointercancel", this.onPointerUp);
     c.removeEventListener("contextmenu", this.onContext);
@@ -1444,17 +1442,12 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.tryLock();
   }
 
-  private onGlobalPointerLeave = () => {
-    this.lastMouseX = undefined;
-    this.lastMouseY = undefined;
-  };
-
   /**
-   * Window-level pointermove — survives HUD overlays / implicit pointer capture.
+   * Window capture pointermove — survives HUD overlays.
    * Pointer Lock uses movementX; TG Desktop bypass uses clientX delta while aimEngaged.
    */
   private onGlobalPointerMove = (e: PointerEvent) => {
-    if (e.pointerType !== "mouse") return;
+    if (e.pointerType === "touch") return;
 
     // 1. СТАНДАРТНЫЙ POINTER LOCK (Если сработал)
     if (this.isLocked()) {
@@ -1493,11 +1486,18 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.pitch = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, this.pitch));
   }
 
+  private isCanvasPointerTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Node)) return false;
+    return target === this.opts.canvas || this.opts.canvas.contains(target);
+  }
+
   private onPointerDown(e: PointerEvent) {
     if (!this.playing || this.inputBlocked()) return;
     if (e.button > 2) return;
     // Phone/tablet: look and break/place live on the pads, not the canvas.
     if (e.pointerType === "touch") return;
+    // Capture on window: ignore HUD / buttons — only canvas engages dig/look.
+    if (!this.isCanvasPointerTarget(e.target)) return;
 
     this.ptrButton = e.button;
     this.ptrStartX = e.clientX;
