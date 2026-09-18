@@ -1,6 +1,7 @@
 {
   "name": "peep",
   "private": true,
+  "description": "Peepland — Zero-friction 3D UGC voxel platform for Telegram Mini Apps",
   "sideEffects": false,
   "type": "module",
   "engines": {
