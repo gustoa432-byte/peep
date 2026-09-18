@@ -498,6 +498,11 @@ export class PeepGame {
     else this.trollPhase = "idle";
     this.world = new VoxelWorld(opts.seed, opts.edits);
     if (this.story.chest) this.world.hideChest();
+    // Host can invite friends immediately — chest is no longer the gate.
+    if (opts.isCreator && !this.story.friday) {
+      this.story.friday = true;
+      this.persist();
+    }
     if (opts.inventoryOverride) this.persist();
     const spawn = this.world.spawn();
     this.pos.set(spawn.x, spawn.y, spawn.z);
@@ -3973,7 +3978,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       invBadge: this.invBadge,
       dynamiteCd: dynamiteRechargeProgress(this.story),
       emoteCd: Math.max(0, Math.min(1, (this.emoteCdUntil - performance.now()) / (EMOTE_COOLDOWN_S * 1000))),
-      fridayUnlocked: this.story.friday && this.opts.isCreator,
+      fridayUnlocked: this.opts.isCreator,
       hatPrompt: this.hatPrompt,
       chestOffer: this.chestOffer,
       hatBusy: Boolean(this.cinematic),

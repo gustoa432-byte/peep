@@ -66,6 +66,8 @@ export async function migratePlayerOwnership(
   await sql.query(`update peep_worlds set creator_id = $1 where creator_id = $2`, [toId, fromId]);
   await sql.query(`update peep_worlds set guest_id = $1 where guest_id = $2`, [toId, fromId]);
   await sql.query(`update peep_worlds set guest_id_2 = $1 where guest_id_2 = $2`, [toId, fromId]);
+  await sql.query(`update peep_worlds set guest_id_3 = $1 where guest_id_3 = $2`, [toId, fromId]);
+  await sql.query(`update peep_worlds set guest_id_4 = $1 where guest_id_4 = $2`, [toId, fromId]);
   // Merge settings: keep newer row.
   const rows = await sql.query<{ player_id: string; settings: string; updated_at: number }>(
     `select player_id, settings, updated_at from peep_user_settings where player_id in ($1, $2)`,

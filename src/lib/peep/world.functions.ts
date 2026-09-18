@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSql } from "@/lib/db";
 import {
   ISLAND_SLUG_RE,
+  MAX_GUEST_SLOTS,
   MAX_WORLDS_PER_ACCOUNT,
   MAX_PLAYERS,
   PRESENCE_TTL_SECONDS,
@@ -42,6 +43,9 @@ const optionalName = z.string().max(48).optional();
 const optionalSlug = z.string().max(24).optional();
 
 const ALPH = "abcdefghjkmnpqrstuvwxyz23456789";
+
+/** peep_worlds columns that hold claimed Friday guest player ids. */
+const GUEST_SLOT_COLS = ["guest_id", "guest_id_2", "guest_id_3", "guest_id_4"] as const;
 
 function nowMs(): number {
   return Date.now();
@@ -107,32 +111,21 @@ async function prunePresence(sql: Awaited<ReturnType<typeof getSql>>, id: string
   const cutoff = nowMs() - PRESENCE_TTL_SECONDS * 1000;
   await sql.query(`delete from peep_presence where world_id = $1 and last_seen < $2`, [id, cutoff]);
   // Free Friday slots if claimed guests timed out.
-  await sql.query(
-    `update peep_worlds
-     set guest_id = null
-     where id = $1
-       and guest_id is not null
-       and not exists (
-         select 1 from peep_presence p
-         where p.world_id = peep_worlds.id
-           and p.player_id = peep_worlds.guest_id
-           and p.last_seen > $2
-       )`,
-    [id, cutoff],
-  );
-  await sql.query(
-    `update peep_worlds
-     set guest_id_2 = null
-     where id = $1
-       and guest_id_2 is not null
-       and not exists (
-         select 1 from peep_presence p
-         where p.world_id = peep_worlds.id
-           and p.player_id = peep_worlds.guest_id_2
-           and p.last_seen > $2
-       )`,
-    [id, cutoff],
-  );
+  for (const col of GUEST_SLOT_COLS.slice(0, MAX_GUEST_SLOTS)) {
+    await sql.query(
+      `update peep_worlds
+       set ${col} = null
+       where id = $1
+         and ${col} is not null
+         and not exists (
+           select 1 from peep_presence p
+           where p.world_id = peep_worlds.id
+             and p.player_id = peep_worlds.${col}
+             and p.last_seen > $2
+         )`,
+      [id, cutoff],
+    );
+  }
 }
 
 type WorldRow = {
@@ -140,60 +133,67 @@ type WorldRow = {
   cursor: number;
   generation: number;
   creatorId: string | null;
-  guestId: string | null;
-  guestId2: string | null;
+  guestIds: (string | null)[];
 };
 
 async function readWorld(
   sql: Awaited<ReturnType<typeof getSql>>,
   id: string,
 ): Promise<WorldRow | null> {
-  const rows = await sql.query<{
-    seed: number;
-    edit_cursor: number | null;
-    generation: number | null;
-    creator_id: string | null;
-    guest_id: string | null;
-    guest_id_2: string | null;
-  }>(
-    `select seed, edit_cursor, generation, creator_id, guest_id, guest_id_2 from peep_worlds where id = $1`,
+  const rows = await sql.query<Record<string, unknown>>(
+    `select seed, edit_cursor, generation, creator_id,
+            guest_id, guest_id_2, guest_id_3, guest_id_4
+     from peep_worlds where id = $1`,
     [id],
   );
   const row = rows[0];
   if (!row) return null;
   return {
-    seed: row.seed,
+    seed: Number(row.seed),
     cursor: Number(row.edit_cursor ?? 0),
     generation: Number(row.generation ?? 0),
-    creatorId: row.creator_id,
-    guestId: row.guest_id ?? null,
-    guestId2: row.guest_id_2 ?? null,
+    creatorId: (row.creator_id as string | null) ?? null,
+    guestIds: GUEST_SLOT_COLS.map((col) => (row[col] as string | null) ?? null),
   };
 }
 
-/** Claim one of two Friday slots atomically. */
+/** Claim one of MAX_GUEST_SLOTS Friday seats atomically. */
 async function claimGuestSlot(
   sql: Awaited<ReturnType<typeof getSql>>,
   worldId: string,
   playerId: string,
 ): Promise<boolean> {
-  const slot1 = await sql.query<{ guest_id: string }>(
-    `update peep_worlds
-     set guest_id = $2
-     where id = $1 and (guest_id is null or guest_id = $2)
-     returning guest_id`,
-    [worldId, playerId],
-  );
-  if (slot1[0]?.guest_id === playerId) return true;
+  for (const col of GUEST_SLOT_COLS.slice(0, MAX_GUEST_SLOTS)) {
+    const claimed = await sql.query<Record<string, string>>(
+      `update peep_worlds
+       set ${col} = $2
+       where id = $1 and (${col} is null or ${col} = $2)
+       returning ${col}`,
+      [worldId, playerId],
+    );
+    if (claimed[0]?.[col] === playerId) return true;
+  }
+  return false;
+}
 
-  const slot2 = await sql.query<{ guest_id_2: string }>(
-    `update peep_worlds
-     set guest_id_2 = $2
-     where id = $1 and (guest_id_2 is null or guest_id_2 = $2)
-     returning guest_id_2`,
-    [worldId, playerId],
-  );
-  return slot2[0]?.guest_id_2 === playerId;
+async function clearGuestSlotsForPlayer(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  playerId: string,
+  opts: { worldId?: string; creatorId?: string },
+) {
+  for (const col of GUEST_SLOT_COLS.slice(0, MAX_GUEST_SLOTS)) {
+    if (opts.worldId) {
+      await sql.query(`update peep_worlds set ${col} = null where id = $1 and ${col} = $2`, [
+        opts.worldId,
+        playerId,
+      ]);
+    } else if (opts.creatorId) {
+      await sql.query(`update peep_worlds set ${col} = null where creator_id = $1 and ${col} = $2`, [
+        opts.creatorId,
+        playerId,
+      ]);
+    }
+  }
 }
 
 async function recordEvent(
@@ -492,7 +492,7 @@ export const joinWorld = createServerFn({ method: "POST" })
     if (!isCreator) {
       if (perms.locked) return { ok: false, error: "locked" };
       if (perms.banned.includes(data.playerId)) return { ok: false, error: "banned" };
-      // Atomic Friday claim — up to two guest slots.
+      // Atomic Friday claim — up to MAX_GUEST_SLOTS guest seats.
       if (!(await claimGuestSlot(sql, data.worldId, data.playerId))) {
         return { ok: false, error: "occupied" };
       }
@@ -736,14 +736,7 @@ export const leaveWorld = createServerFn({ method: "POST" })
       data.worldId,
       data.playerId,
     ]);
-    await sql.query(`update peep_worlds set guest_id = null where id = $1 and guest_id = $2`, [
-      data.worldId,
-      data.playerId,
-    ]);
-    await sql.query(`update peep_worlds set guest_id_2 = null where id = $1 and guest_id_2 = $2`, [
-      data.worldId,
-      data.playerId,
-    ]);
+    await clearGuestSlotsForPlayer(sql, data.playerId, { worldId: data.worldId });
     return { ok: true as const };
   });
 
@@ -810,6 +803,14 @@ export const deleteWorld = createServerFn({ method: "POST" })
               legacy,
             ]);
             await sql.query(`update peep_worlds set guest_id_2 = $1 where guest_id_2 = $2`, [
+              data.playerId,
+              legacy,
+            ]);
+            await sql.query(`update peep_worlds set guest_id_3 = $1 where guest_id_3 = $2`, [
+              data.playerId,
+              legacy,
+            ]);
+            await sql.query(`update peep_worlds set guest_id_4 = $1 where guest_id_4 = $2`, [
               data.playerId,
               legacy,
             ]);
@@ -926,14 +927,7 @@ export const updateGuestPermissions = createServerFn({ method: "POST" })
     if (data.patch.banPlayerId) {
       if (!perms.banned.includes(data.patch.banPlayerId)) perms.banned.push(data.patch.banPlayerId);
       // Free the Friday slot so a new guest can claim after kick.
-      await sql.query(
-        `update peep_worlds set guest_id = null where creator_id = $1 and guest_id = $2`,
-        [data.playerId, data.patch.banPlayerId],
-      );
-      await sql.query(
-        `update peep_worlds set guest_id_2 = null where creator_id = $1 and guest_id_2 = $2`,
-        [data.playerId, data.patch.banPlayerId],
-      );
+      await clearGuestSlotsForPlayer(sql, data.patch.banPlayerId, { creatorId: data.playerId });
       await sql.query(`delete from peep_presence where player_id = $1 and world_id in (
         select id from peep_worlds where creator_id = $2
       )`, [data.patch.banPlayerId, data.playerId]);

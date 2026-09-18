@@ -122,7 +122,9 @@ export const CHUNK_RENDER_DISTANCE = VIEW_CHUNKS * CHUNK_S;
 export const MESH_PER_FRAME = 2;
 export const WORLD_EDIT_LIM = 4095;
 /** Host + up to two Fridays. */
-export const MAX_PLAYERS = 3;
+export const MAX_PLAYERS = 5;
+/** Claimed Friday guest seats per island (host is separate). */
+export const MAX_GUEST_SLOTS = 4;
 /** Concurrent Friday guest claims per island. */
 export const MAX_GUESTS = 2;
 export const REACH = 6;

@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS peep_worlds (
   name TEXT,
   slug TEXT,
   guest_id TEXT,
-  guest_id_2 TEXT
+  guest_id_2 TEXT,
+  guest_id_3 TEXT,
+  guest_id_4 TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS peep_worlds_slug_uidx
   ON peep_worlds (slug)
@@ -279,6 +281,16 @@ function migrateSync(db: Database.Database): void {
   }
   try {
     db.exec(`ALTER TABLE peep_worlds ADD COLUMN guest_id_2 TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    db.exec(`ALTER TABLE peep_worlds ADD COLUMN guest_id_3 TEXT`);
+  } catch {
+    /* already exists */
+  }
+  try {
+    db.exec(`ALTER TABLE peep_worlds ADD COLUMN guest_id_4 TEXT`);
   } catch {
     /* already exists */
   }
