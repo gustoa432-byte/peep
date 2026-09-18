@@ -201,7 +201,7 @@ export const en = {
   "touch.move.ariaLabel": "Move",
   "touch.break.ariaLabel": "Break",
   "touch.jump.label": "Jump",
-  "touch.placeHint": "to place a block — double tap + hold",
+  "touch.placeHint": "place block: double tap + hold",
 
   "forge.title": "forge",
   "forge.tab.edit": "Editor",

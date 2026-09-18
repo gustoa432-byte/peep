@@ -181,8 +181,8 @@ export function installTutorialHref(): string {
   return `/?install=1&platform=${ios ? "ios" : "android"}`;
 }
 
-const PLACE_HINT_KEY = "peep.placeHint.count";
-const MINE_HINT_KEY = "peep.mineHint.count";
+const PLACE_HINT_KEY = "peep.placeHint.v4.count";
+const MINE_HINT_KEY = "peep.mineHint.v4.count";
 
 export function placedBlockCount(): number {
   if (typeof window === "undefined") return 0;

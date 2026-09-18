@@ -5,6 +5,23 @@ export type OrientMode = "portrait" | "landscape";
 
 const ORIENT_KEY = "peep.orient";
 
+/** iPhone / Android UA — TG WebView may omit platform or lie about pointer:fine. */
+export function isMobileUserAgent(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iphone|ipad|ipod|android/i.test(navigator.userAgent);
+}
+
+/** Touch-first client: TG mobile, mobile UA, or coarse-only pointer. */
+export function isTouchPhoneClient(): boolean {
+  if (typeof window === "undefined") return false;
+  if (isTelegramMobilePlatform()) return true;
+  if (isMobileUserAgent()) return true;
+  if (isTelegramDesktopPlatform()) return false;
+  const fine = window.matchMedia("(pointer: fine)").matches;
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  return coarse && !fine;
+}
+
 export function readOrient(): OrientMode {
   if (typeof window === "undefined") return "landscape";
   try {
@@ -68,44 +85,28 @@ export function useMatchMedia(query: string) {
 }
 
 /** True phone / touch-first UI.
- * TG iOS/Android WebViews often lie about pointer:fine — platform wins there.
- * Elsewhere, a real fine pointer (Telegram Web weba/webk on desktop) stays desktop.
+ * TG iOS/Android WebViews often lie about pointer:fine — platform + UA win there.
  */
 export function usePhoneUi() {
   const [phone, setPhone] = useState(() => {
     if (typeof window === "undefined") return false;
-    // Native TG mobile first — PlaceHint / sticks must show in TMA on phones.
-    if (isTelegramMobilePlatform()) return true;
-    if (window.matchMedia("(pointer: fine)").matches) return false;
-    if (isTelegramDesktopPlatform()) return false;
-    return window.matchMedia("(pointer: coarse)").matches;
+    return isTouchPhoneClient();
   });
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const coarse = window.matchMedia("(pointer: coarse)");
-    const sync = () => {
-      if (isTelegramMobilePlatform()) {
-        setPhone(true);
-        return;
-      }
-      if (fine.matches) {
-        setPhone(false);
-        return;
-      }
-      if (isTelegramDesktopPlatform()) {
-        setPhone(false);
-        return;
-      }
-      setPhone(coarse.matches);
-    };
+    const sync = () => setPhone(isTouchPhoneClient());
     sync();
+    // TG platform / UA often ready after first paint.
     const t0 = window.setTimeout(sync, 0);
     const t1 = window.setTimeout(sync, 250);
+    const t2 = window.setTimeout(sync, 1000);
     fine.addEventListener("change", sync);
     coarse.addEventListener("change", sync);
     return () => {
       window.clearTimeout(t0);
       window.clearTimeout(t1);
+      window.clearTimeout(t2);
       fine.removeEventListener("change", sync);
       coarse.removeEventListener("change", sync);
     };
@@ -113,12 +114,12 @@ export function usePhoneUi() {
   return phone;
 }
 
-/** Desktop mouse look — never mount LookSurface / sticks when fine pointer is present (except TG mobile). */
+/** Desktop mouse look — never mount LookSurface / sticks on touch phones. */
 export function useDesktopMouseUi() {
   const phone = usePhoneUi();
   const [desktop, setDesktop] = useState(() => {
     if (typeof window === "undefined") return true;
-    if (isTelegramMobilePlatform()) return false;
+    if (isTouchPhoneClient()) return false;
     if (window.matchMedia("(pointer: fine)").matches) return true;
     if (isTelegramDesktopPlatform()) return true;
     return false;
@@ -126,7 +127,7 @@ export function useDesktopMouseUi() {
   useEffect(() => {
     const fine = window.matchMedia("(pointer: fine)");
     const sync = () => {
-      if (isTelegramMobilePlatform()) {
+      if (isTouchPhoneClient()) {
         setDesktop(false);
         return;
       }
@@ -143,12 +144,14 @@ export function useDesktopMouseUi() {
     sync();
     const t0 = window.setTimeout(sync, 0);
     const t1 = window.setTimeout(sync, 250);
+    const t2 = window.setTimeout(sync, 1000);
     fine.addEventListener("change", sync);
     return () => {
       window.clearTimeout(t0);
       window.clearTimeout(t1);
+      window.clearTimeout(t2);
       fine.removeEventListener("change", sync);
     };
   }, []);
-  return desktop || !phone;
+  return desktop && !phone;
 }

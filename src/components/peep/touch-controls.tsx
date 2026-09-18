@@ -426,20 +426,20 @@ export function TouchControls({
 
 export function PlaceHint({
   placed,
-  mined,
   force,
 }: {
   placed: number;
-  mined: number;
+  mined?: number;
   orient: OrientMode;
   force?: boolean;
 }) {
   const { t } = useTranslation();
-  // Phone / TG mobile only. Show after first dig until a few successful places.
-  if (!force || mined < 1 || placed >= 2) return null;
+  // Touch / TG mobile: show as soon as playing, until a couple of successful places.
+  // Do NOT require a prior dig — that hid the hint for most first-time players.
+  if (!force || placed >= 2) return null;
   return (
     <p
-      className="pointer-events-none absolute top-[42%] left-1/2 z-[90] max-w-[min(22rem,88vw)] -translate-x-1/2 -translate-y-1/2 animate-pulse border-2 border-fg-on-ink bg-bg-deep/90 px-4 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-wide text-fg-on-ink shadow-[0_0_24px_rgba(255,255,255,0.35)]"
+      className="pointer-events-none absolute top-[38%] left-1/2 z-[200] max-w-[min(22rem,88vw)] -translate-x-1/2 -translate-y-1/2 animate-pulse border-2 border-fg-on-ink bg-bg-deep/95 px-4 py-2.5 text-center font-mono text-xs font-bold uppercase tracking-wide text-fg-on-ink shadow-[0_0_24px_rgba(255,255,255,0.35)]"
       role="status"
     >
       {t("touch.placeHint")}

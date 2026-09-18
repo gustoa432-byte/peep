@@ -218,6 +218,16 @@ async function takeRateSlot(
   sql: Awaited<ReturnType<typeof getSql>>,
   id: string,
 ): Promise<boolean> {
+  return takeRateSlots(sql, id, 1);
+}
+
+/** Reserve `n` edit slots in the rate window (one TNT blast ≈ many cells). */
+async function takeRateSlots(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  id: string,
+  n: number,
+): Promise<boolean> {
+  const need = Math.max(1, Math.floor(n));
   const rows = await sql.query<{ window_start: number; count: number }>(
     `select window_start, count from peep_rate where player_id = $1`,
     [id],
@@ -225,21 +235,23 @@ async function takeRateSlot(
   const now = nowMs();
   const row = rows[0];
   if (!row) {
-    await sql.query(`insert into peep_rate (player_id, window_start, count) values ($1, $2, 1)`, [
+    await sql.query(`insert into peep_rate (player_id, window_start, count) values ($1, $2, $3)`, [
       id,
       now,
+      need,
     ]);
     return true;
   }
   if (now - Number(row.window_start) > RATE_WINDOW_SECONDS * 1000) {
-    await sql.query(`update peep_rate set window_start = $2, count = 1 where player_id = $1`, [
+    await sql.query(`update peep_rate set window_start = $2, count = $3 where player_id = $1`, [
       id,
       now,
+      need,
     ]);
     return true;
   }
-  if (row.count >= RATE_MAX_EDITS) return false;
-  await sql.query(`update peep_rate set count = count + 1 where player_id = $1`, [id]);
+  if (row.count + need > RATE_MAX_EDITS) return false;
+  await sql.query(`update peep_rate set count = count + $2 where player_id = $1`, [id, need]);
   return true;
 }
 
@@ -550,6 +562,64 @@ export const applyEdit = createServerFn({ method: "POST" })
       [data.worldId, data.x, data.y, data.z, data.block, cursor, data.playerId],
     );
     if (data.block === 0) {
+      const seen = await sql.query(
+        `select 1 as ok from peep_events where name = 'first_break' and world_id = $1 and player_id = $2 limit 1`,
+        [data.worldId, data.playerId],
+      );
+      if (!seen[0]) await recordEvent(sql, "first_break", data.worldId, data.playerId);
+    }
+    return { ok: true, cursor };
+  });
+
+/** Host-only: persist many block edits in one request (TNT blast). */
+export const applyEdits = createServerFn({ method: "POST" })
+  .validator(
+    z.object({
+      worldId,
+      playerId,
+      edits: z
+        .array(
+          z.object({
+            x: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
+            y: z.number().int().min(0).max(WORLD_SY - 1),
+            z: z.number().int().min(-WORLD_EDIT_LIM).max(WORLD_EDIT_LIM),
+            block: z.number().int().min(0).max(11),
+          }),
+        )
+        .min(1)
+        .max(128),
+    }),
+  )
+  .handler(async ({ data }): Promise<ApplyEditResult> => {
+    const sql = await getSql();
+    const world = await readWorld(sql, data.worldId);
+    if (!world) return { ok: false, error: "not_found" };
+    if (world.creatorId) {
+      const aliases = await playerIdAliases(sql, data.playerId);
+      if (!aliases.includes(world.creatorId)) return { ok: false, error: "forbidden" };
+    }
+    if (!(await takeRateSlots(sql, data.playerId, data.edits.length))) {
+      return { ok: false, error: "rate" };
+    }
+
+    let cursor = world.cursor;
+    let sawBreak = false;
+    for (const e of data.edits) {
+      const bumped = await sql.query<{ edit_cursor: number }>(
+        `update peep_worlds set edit_cursor = edit_cursor + 1 where id = $1 returning edit_cursor`,
+        [data.worldId],
+      );
+      cursor = bumped[0]?.edit_cursor ?? cursor + 1;
+      await sql.query(
+        `insert into peep_edits (world_id, x, y, z, block, cursor, author_id)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         on conflict (world_id, x, y, z)
+         do update set block = excluded.block, cursor = excluded.cursor, author_id = excluded.author_id`,
+        [data.worldId, e.x, e.y, e.z, e.block, cursor, data.playerId],
+      );
+      if (e.block === 0) sawBreak = true;
+    }
+    if (sawBreak) {
       const seen = await sql.query(
         `select 1 as ok from peep_events where name = 'first_break' and world_id = $1 and player_id = $2 limit 1`,
         [data.worldId, data.playerId],

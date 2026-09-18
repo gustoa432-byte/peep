@@ -200,7 +200,7 @@ export const ru = {
   "touch.move.ariaLabel": "Движение",
   "touch.break.ariaLabel": "Ломать",
   "touch.jump.label": "Прыжок",
-  "touch.placeHint": "чтобы поставить блок — два раза тапнуть + удержание",
+  "touch.placeHint": "поставить блок: дабл тап + удержание",
 
   "forge.title": "кузница",
   "forge.tab.edit": "Редактор",

@@ -16,11 +16,12 @@ import { PeepGame } from "@/lib/peep/game";
 import { startLazySave } from "@/lib/peep/lazy-save";
 import { getTelegramSaveId } from "@/lib/peep/player-id";
 import { markSessionDone, minedBlockCount, placedBlockCount, recordMinedBlock, recordPlacedBlock } from "@/lib/peep/remember-world";
-import { lockOrient, unlockOrient, useDesktopMouseUi, usePhoneUi } from "@/lib/peep/settings";
+import { lockOrient, unlockOrient, useDesktopMouseUi, usePhoneUi, isTouchPhoneClient } from "@/lib/peep/settings";
 import {
   fridayInviteLink,
   initTelegramWebApp,
   isTelegramDesktopPlatform,
+  isTelegramMobilePlatform,
   shareFridayInvite,
 } from "@/lib/peep/telegram";
 import type { Story } from "@/lib/peep/progress";
@@ -102,6 +103,9 @@ export function WorldStage({
   const phone = usePhoneUi();
   const desktopMouse = useDesktopMouseUi();
   const showTouchPads = phone && !desktopMouse && !isTelegramDesktopPlatform();
+  // Place hint: any touch-phone client (TG ios/android, mobile UA), even if pads lag a frame.
+  const showPlaceHint =
+    showTouchPads || phone || isTelegramMobilePlatform() || isTouchPhoneClient();
   const [hudOverlay, setHudOverlay] = useState(false);
   // Game is landscape-only on phones; desktop HUD stays "portrait" layout labels.
   const orient = phone ? "landscape" : "portrait";
@@ -338,10 +342,13 @@ export function WorldStage({
           />
         </>
       ) : null}
+      </div>
 
-      {/* Place hint follows phone UI (TG mobile), not nested under pads-only gate. */}
-      {hud.playing && !hud.cinematicActive && !hudOverlay && phone ? (
-        <PlaceHint placed={placed} mined={mined} orient={orient} force />
+      {/* Outside ui-container so HUD/pads cannot bury it in TG WebView. */}
+      {hud.playing && !hud.cinematicActive && !hudOverlay && showPlaceHint ? (
+        <div className="pointer-events-none absolute inset-0 z-[200]">
+          <PlaceHint placed={placed} mined={mined} orient={orient} force />
+        </div>
       ) : null}
 
       {!hud.playing && !lost && !bootLoading ? (
@@ -381,7 +388,6 @@ export function WorldStage({
           </p>
         </div>
       ) : null}
-      </div>
       </div>
     </div>
   );

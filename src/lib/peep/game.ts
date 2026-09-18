@@ -118,7 +118,7 @@ import {
 import { hatSpot, pastIslandShore, VoxelWorld } from "./world";
 
 export { buildItemFromJSON } from "./held-item";
-import { applyEdit, heartbeat, listEdits, listPresence, resetWorld, updateGuestPermissions } from "./world.functions";
+import { applyEdit, applyEdits, heartbeat, listEdits, listPresence, resetWorld, updateGuestPermissions } from "./world.functions";
 
 export type ControlsProbe = {
   getYaw: () => number;
@@ -388,6 +388,34 @@ export class PeepGame {
   private fpsEma = 0;
   private lastMeshMs = 0;
   private maxMeshMs = 0;
+  /**
+   * Active while `detonate` runs — accumulates main-thread cost so mobile freezes
+   * can be attributed (scan vs remesh vs net vs particles). Logged once as
+   * `[blast-profile]`. Remote block floods use `netBlastWin` below.
+   */
+  private blastProf: {
+    scanMs: number;
+    applyWorldMs: number;
+    meshMs: number;
+    remeshCount: number;
+    dirtyUnique: number;
+    netMs: number;
+    netMsgs: number;
+    httpPosts: number;
+    burstMs: number;
+    bursts: number;
+    cells: number;
+  } | null = null;
+  /** Sliding window for inbound `block` spam (peer detonations). */
+  private netBlastWin: {
+    t0: number;
+    parseMs: number;
+    applyMs: number;
+    meshMs: number;
+    msgs: number;
+  } | null = null;
+  /** Debounce boom FX when local detonate and peer explode race. */
+  private lastBlastFxAt = 0;
   private firstFrameMs = 0;
   private drawCalls = 0;
   private triangles = 0;
@@ -1737,6 +1765,13 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     }
     this.lastMeshMs = performance.now() - t0;
     if (this.lastMeshMs > this.maxMeshMs) this.maxMeshMs = this.lastMeshMs;
+    if (this.blastProf && n > 0) {
+      this.blastProf.meshMs += this.lastMeshMs;
+      this.blastProf.remeshCount += n;
+    }
+    if (this.netBlastWin && n > 0) {
+      this.netBlastWin.meshMs += this.lastMeshMs;
+    }
     this.emitBootProgress();
   }
 
@@ -2446,33 +2481,72 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     return px1 > x && px0 < x + 1 && py1 > y && py0 < y + 1 && pz1 > z && pz0 < z + 1;
   }
 
-  private applyLocal(x: number, y: number, z: number, block: number, sync: boolean) {
+  /**
+   * Apply a voxel change locally.
+   * - sync: broadcast + host SQLite write (single-block dig/place).
+   * - deferMesh: mark dirty only — rAF flushDirty(MESH_PER_FRAME) remeshes later.
+   *   Used by TNT so one blast does not remesh the same chunks ~100×.
+   */
+  private applyLocal(
+    x: number,
+    y: number,
+    z: number,
+    block: number,
+    opts: { sync?: boolean; deferMesh?: boolean } = {},
+  ): boolean {
+    const sync = opts.sync === true;
+    const deferMesh = opts.deferMesh === true;
     const prev = this.world.get(x, y, z);
-    if (prev === block) return;
+    if (prev === block) return false;
     // Hard rule: never stack a solid into an occupied cell (duplicate faces → z-fight).
     // Digs (AIR) and empty-cell places still go through; overwrite only for those.
-    if (block !== AIR && prev !== AIR) return;
-    if (!this.world.set(x, y, z, block, true)) return;
-    this.rebuildAround(x, z);
-    // Sync remesh now — no client-prediction temp Mesh, and no ghost lingering in a stale chunk.
-    this.flushDirty(32);
-    if (import.meta.env.DEV) {
-      const cx = Math.floor(x / CHUNK_S);
-      const cz = Math.floor(z / CHUNK_S);
-      const mesh = this.chunkMeshes.get(`${cx},${cz}`);
-      const n = mesh?.geometry.attributes.position?.count ?? -1;
-      console.log(`[peep-mesh] cell (${x},${y},${z}) → ${block} | chunk ${cx},${cz} position.count=${n}`);
+    if (block !== AIR && prev !== AIR) return false;
+    const tWorld = performance.now();
+    if (!this.world.set(x, y, z, block, true)) return false;
+    if (this.blastProf) {
+      this.blastProf.applyWorldMs += performance.now() - tWorld;
+      this.blastProf.cells += 1;
     }
-    if (block === AIR) this.burst(x, y, z, prev);
+    this.rebuildAround(x, z);
+    if (!deferMesh) {
+      // Sync remesh now — no client-prediction temp Mesh, and no ghost lingering in a stale chunk.
+      this.flushDirty(32);
+      if (import.meta.env.DEV && !this.blastProf) {
+        const cx = Math.floor(x / CHUNK_S);
+        const cz = Math.floor(z / CHUNK_S);
+        const mesh = this.chunkMeshes.get(`${cx},${cz}`);
+        const n = mesh?.geometry.attributes.position?.count ?? -1;
+        console.log(`[peep-mesh] cell (${x},${y},${z}) → ${block} | chunk ${cx},${cz} position.count=${n}`);
+      }
+      if (block === AIR) {
+        const tBurst = performance.now();
+        this.burst(x, y, z, prev);
+        if (this.blastProf) {
+          this.blastProf.burstMs += performance.now() - tBurst;
+          this.blastProf.bursts += 1;
+        }
+      }
+    }
+    if (block === AIR) {
+      for (let i = this.fuses.length - 1; i >= 0; i--) {
+        const f = this.fuses[i]!;
+        if (f.x === x && f.y === y && f.z === z) this.fuses.splice(i, 1);
+      }
+    }
     if (block === DYNAMITE && !this.fuses.some((f) => f.x === x && f.y === y && f.z === z)) {
       this.fuses.push({ x, y, z, t: 0, hiss: 0 });
     }
     this.opts.onWorldDirty?.();
-    if (!sync) return;
+    if (!sync) return true;
 
+    const tNet = performance.now();
     // Host authority: only the island owner writes SQLite + broadcasts blocks.
     if (this.opts.isCreator) {
       this.p2p.send({ t: "block", x, y, z, block } satisfies NetMsg);
+      if (this.blastProf) {
+        this.blastProf.netMsgs += 1;
+        this.blastProf.httpPosts += 1;
+      }
       void applyEdit({
         data: {
           worldId: this.opts.worldId,
@@ -2502,11 +2576,17 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
           this.failStreak += 1;
           if (this.failStreak > 8) this.opts.onLost();
         });
-      return;
+      if (this.blastProf) this.blastProf.netMs += performance.now() - tNet;
+      return true;
     }
 
     // Friday: propose to host over P2P only (no server write).
     this.p2p.send({ t: "block_req", x, y, z, block } satisfies NetMsg);
+    if (this.blastProf) {
+      this.blastProf.netMsgs += 1;
+      this.blastProf.netMs += performance.now() - tNet;
+    }
+    return true;
   }
 
   private canGuestBuild(): boolean {
@@ -2519,7 +2599,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     const prev = this.world.get(x, y, z);
     if (prev === AIR) return;
     if (prev === CHEST) {
-      this.applyLocal(x, y, z, AIR, true);
+      this.applyLocal(x, y, z, AIR, { sync: true });
       this.audio.break(prev);
       this.audio.pickup();
       if (!this.story.chest) {
@@ -2533,7 +2613,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       this.opts.onBroken?.();
       return;
     }
-    this.applyLocal(x, y, z, AIR, true);
+    this.applyLocal(x, y, z, AIR, { sync: true });
     this.lootBlock(prev, 1);
     this.persist();
     this.audio.break(prev);
@@ -2569,7 +2649,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       return false;
     }
     this.persist();
-    this.applyLocal(x, y, z, block, true);
+    this.applyLocal(x, y, z, block, { sync: true });
     this.audio.place(block === BARRIER ? 3 : block);
     this.swing = 0.6;
     this.hudDirty = true;
@@ -2850,9 +2930,25 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
   }
 
   private detonate(cx: number, cy: number, cz: number) {
-    this.audio.boom();
-    hapticBoom();
+    const tAll = performance.now();
+    console.time("blast:total");
+    this.blastProf = {
+      scanMs: 0,
+      applyWorldMs: 0,
+      meshMs: 0,
+      remeshCount: 0,
+      dirtyUnique: 0,
+      netMs: 0,
+      netMsgs: 0,
+      httpPosts: 0,
+      burstMs: 0,
+      bursts: 0,
+      cells: 0,
+    };
+
     // Collect destroyable voxels by distance (chest / air / barrier skip).
+    console.time("blast:scan");
+    const tScan = performance.now();
     const candidates: { x: number; y: number; z: number; d: number; block: number }[] = [];
     const R = DYNAMITE_BLAST_RADIUS;
     for (let y = Math.max(0, cy - R); y <= Math.min(WORLD_SY - 1, cy + R); y++) {
@@ -2871,19 +2967,199 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     }
     candidates.sort((a, b) => a.d - b.d);
     const take = candidates.slice(0, DYNAMITE_BLAST_BLOCKS);
+    this.blastProf.scanMs = performance.now() - tScan;
+    console.timeEnd("blast:scan");
+
+    console.time("blast:apply+mesh+net");
+    const destroyed: { x: number; y: number; z: number; block: number }[] = [];
+    const defer = { sync: false, deferMesh: true } as const;
+
     // Always clear the dynamite cell itself if still present.
     if (this.world.get(cx, cy, cz) === DYNAMITE) {
-      this.applyLocal(cx, cy, cz, AIR, true);
+      if (this.applyLocal(cx, cy, cz, AIR, defer)) {
+        destroyed.push({ x: cx, y: cy, z: cz, block: DYNAMITE });
+      }
     }
     for (const c of take) {
       if (c.x === cx && c.y === cy && c.z === cz) continue;
       if (this.world.get(c.x, c.y, c.z) !== c.block) continue;
-      this.applyLocal(c.x, c.y, c.z, AIR, true);
+      if (!this.applyLocal(c.x, c.y, c.z, AIR, defer)) continue;
+      destroyed.push({ x: c.x, y: c.y, z: c.z, block: c.block });
       if (c.block !== DYNAMITE) this.lootBlock(c.block, 1);
     }
+
+    // One event packet instead of ~100 block / block_req messages.
+    const cells: number[] = [];
+    for (const d of destroyed) {
+      cells.push(d.x, d.y, d.z);
+    }
+    const explodeMsg = {
+      t: "explode" as const,
+      x: cx,
+      y: cy,
+      z: cz,
+      r: R,
+      cells,
+    } satisfies NetMsg;
+
+    const tNet = performance.now();
+    this.p2p.send(explodeMsg);
+    if (this.blastProf) {
+      this.blastProf.netMsgs += 1;
+      this.blastProf.netMs += performance.now() - tNet;
+    }
+    if (this.opts.isCreator && destroyed.length > 0) {
+      this.persistBlastEdits(destroyed.map((d) => ({ x: d.x, y: d.y, z: d.z, block: AIR })));
+    }
+    console.timeEnd("blast:apply+mesh+net");
+
+    this.blastProf.dirtyUnique = this.dirtyChunks.size;
+    const prof = this.blastProf;
+    this.blastProf = null;
+    const totalMs = performance.now() - tAll;
+    console.timeEnd("blast:total");
+    console.log("[blast-profile]", {
+      totalMs: +totalMs.toFixed(1),
+      scanMs: +prof.scanMs.toFixed(1),
+      applyWorldMs: +prof.applyWorldMs.toFixed(1),
+      meshMs: +prof.meshMs.toFixed(1),
+      remeshCount: prof.remeshCount,
+      dirtyLeft: prof.dirtyUnique,
+      netMs: +prof.netMs.toFixed(1),
+      netMsgs: prof.netMsgs,
+      httpPosts: prof.httpPosts,
+      burstMs: +prof.burstMs.toFixed(1),
+      bursts: prof.bursts,
+      cells: prof.cells,
+      candidates: candidates.length,
+      taken: take.length,
+      packed: cells.length / 3,
+    });
+
+    this.spawnBlastFx(cx + 0.5, cy + 0.5, cz + 0.5);
     this.persist();
-    this.applyBlastImpulse(cx + 0.5, cy + 0.5, cz + 0.5);
     this.hudDirty = true;
+  }
+
+  /** Host: one HTTP batch for an entire TNT crater. */
+  private persistBlastEdits(edits: { x: number; y: number; z: number; block: number }[]) {
+    if (!this.opts.isCreator || edits.length === 0) return;
+    if (this.blastProf) this.blastProf.httpPosts += 1;
+    void applyEdits({
+      data: {
+        worldId: this.opts.worldId,
+        playerId: this.opts.playerId,
+        edits,
+      },
+    })
+      .then((r) => {
+        if (!r.ok) {
+          this.failStreak += 1;
+          if (this.failStreak > 8) this.opts.onLost();
+          return;
+        }
+        this.failStreak = 0;
+        if (r.cursor > this.editCursor) this.editCursor = r.cursor;
+      })
+      .catch(() => {
+        this.failStreak += 1;
+        if (this.failStreak > 8) this.opts.onLost();
+      });
+  }
+
+  /** Apply a peer/host explosion mask — voxels only, lazy remesh, no network echo. */
+  private applyExplosionMask(msg: Extract<NetMsg, { t: "explode" }>, from: string) {
+    if (!Array.isArray(msg.cells) || msg.cells.length < 3) return;
+    const defer = { sync: false, deferMesh: true } as const;
+    const edits: { x: number; y: number; z: number; block: number }[] = [];
+    for (let i = 0; i + 2 < msg.cells.length; i += 3) {
+      const x = msg.cells[i]!;
+      const y = msg.cells[i + 1]!;
+      const z = msg.cells[i + 2]!;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (this.applyLocal(x, y, z, AIR, defer)) {
+        edits.push({ x, y, z, block: AIR });
+      }
+    }
+    this.spawnBlastFx(msg.x + 0.5, msg.y + 0.5, msg.z + 0.5);
+    // Host persists guest blasts and fans out to peers who may not share a P2P edge with the guest.
+    if (this.opts.isCreator && from !== this.opts.playerId) {
+      if (edits.length > 0) this.persistBlastEdits(edits);
+      for (const peer of this.p2p.peerList()) {
+        if (peer.id === from) continue;
+        if (peer.connectionState !== "connected") continue;
+        this.p2p.send(msg, peer.id);
+      }
+    }
+    this.opts.onWorldDirty?.();
+    this.hudDirty = true;
+  }
+
+  /**
+   * One-shot boom cover for lazy chunk remesh (100–300ms): audio, haptic,
+   * camera shake/knockback, smoke + sparks — not per destroyed cell.
+   */
+  private spawnBlastFx(bx: number, by: number, bz: number) {
+    const now = performance.now();
+    if (now - this.lastBlastFxAt < 180) {
+      this.applyBlastImpulse(bx, by, bz);
+      return;
+    }
+    this.lastBlastFxAt = now;
+    this.audio.boom();
+    hapticBoom();
+    this.applyBlastImpulse(bx, by, bz);
+
+    const tBurst = performance.now();
+    // Smoke puffs — larger, darker, slower.
+    for (let i = 0; i < 18; i++) {
+      const mat = new THREE.MeshLambertMaterial({
+        color: 0x4a4a4a,
+        transparent: true,
+        opacity: 0.55,
+      });
+      const s = 0.22 + Math.random() * 0.35;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), mat);
+      mesh.position.set(
+        bx + (Math.random() - 0.5) * 1.6,
+        by + (Math.random() - 0.5) * 1.2,
+        bz + (Math.random() - 0.5) * 1.6,
+      );
+      this.scene.add(mesh);
+      this.particles.push({
+        mesh,
+        vx: (Math.random() - 0.5) * 1.4,
+        vy: Math.random() * 1.2 + 0.4,
+        vz: (Math.random() - 0.5) * 1.4,
+        life: 0.35 + Math.random() * 0.35,
+        maxLife: 0.7,
+        grav: GRAVITY * 0.25,
+      });
+    }
+    // Sparks — small bright chips.
+    for (let i = 0; i < 14; i++) {
+      const mat = new THREE.MeshLambertMaterial({
+        color: i % 2 === 0 ? 0xffaa33 : 0xffee88,
+        transparent: true,
+        opacity: 0.95,
+      });
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), mat);
+      mesh.position.set(bx, by, bz);
+      this.scene.add(mesh);
+      this.particles.push({
+        mesh,
+        vx: (Math.random() - 0.5) * 7,
+        vy: Math.random() * 5 + 2,
+        vz: (Math.random() - 0.5) * 7,
+        life: 0.25 + Math.random() * 0.25,
+        maxLife: 0.5,
+        grav: GRAVITY,
+      });
+    }
+    if (this.blastProf) {
+      this.blastProf.burstMs += performance.now() - tBurst;
+      this.blastProf.bursts += 1;
+    }
   }
 
   private applyBlastImpulse(bx: number, by: number, bz: number) {
@@ -3062,12 +3338,34 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
         this.p2p.send({ t: "hello", name: getTelegramDisplayName() } satisfies NetMsg, from);
       }
     } else if (msg.t === "block" && channel === "reliable") {
-      this.applyLocal(msg.x, msg.y, msg.z, msg.block, false);
+      // Profile inbound block floods (legacy peers / dig-place). Parse is trivial JSON
+      // already done by the datachannel; time here is apply+mesh on main thread.
+      const tParse = performance.now();
+      const now = tParse;
+      if (!this.netBlastWin || now - this.netBlastWin.t0 > 400) {
+        if (this.netBlastWin && this.netBlastWin.msgs >= 8) {
+          console.log("[blast-profile:net-in]", {
+            windowMs: +(now - this.netBlastWin.t0).toFixed(1),
+            msgs: this.netBlastWin.msgs,
+            parseMs: +this.netBlastWin.parseMs.toFixed(1),
+            applyMs: +this.netBlastWin.applyMs.toFixed(1),
+            meshMs: +this.netBlastWin.meshMs.toFixed(1),
+          });
+        }
+        this.netBlastWin = { t0: now, parseMs: 0, applyMs: 0, meshMs: 0, msgs: 0 };
+      }
+      this.netBlastWin.parseMs += performance.now() - tParse;
+      this.netBlastWin.msgs += 1;
+      const tApply = performance.now();
+      this.applyLocal(msg.x, msg.y, msg.z, msg.block, { sync: false });
+      this.netBlastWin.applyMs += performance.now() - tApply;
+    } else if (msg.t === "explode" && channel === "reliable") {
+      this.applyExplosionMask(msg, from);
     } else if (msg.t === "block_req" && channel === "reliable") {
       if (!this.opts.isCreator || !this.guestBuildAllowed) return;
       const prev = this.world.get(msg.x, msg.y, msg.z);
       if (prev === msg.block) return;
-      this.applyLocal(msg.x, msg.y, msg.z, msg.block, true);
+      this.applyLocal(msg.x, msg.y, msg.z, msg.block, { sync: true });
     } else if (msg.t === "perms" && channel === "reliable") {
       this.guestBuildAllowed = Boolean(msg.buildAllowed);
       this.islandLocked = Boolean(msg.locked);
@@ -3437,7 +3735,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
       } else {
         for (const e of edits.edits) {
           if (e.cursor > this.editCursor) this.editCursor = e.cursor;
-          if (this.world.get(e.x, e.y, e.z) !== e.block) this.applyLocal(e.x, e.y, e.z, e.block, false);
+          if (this.world.get(e.x, e.y, e.z) !== e.block) this.applyLocal(e.x, e.y, e.z, e.block, { sync: false });
         }
       }
       this.mergePresence(presence);

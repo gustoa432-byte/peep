@@ -142,6 +142,16 @@ export type NetBlockReq = {
   block: number;
 };
 
+/** Host/peer: one TNT blast — packed destroyed cells [x,y,z, x,y,z, ...]. */
+export type NetExplosion = {
+  t: "explode";
+  x: number;
+  y: number;
+  z: number;
+  r: number;
+  cells: number[];
+};
+
 export type NetHello = {
   t: "hello";
   /** Telegram display name for torso nametag. */
@@ -183,6 +193,7 @@ export type NetMsg =
   | NetPos
   | NetBlock
   | NetBlockReq
+  | NetExplosion
   | NetHello
   | NetEmote
   | NetLook
