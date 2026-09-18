@@ -1241,8 +1241,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.addEventListener("resize", this.onOrient);
     document.addEventListener("pointerlockchange", this.onLock);
     document.addEventListener("pointerlockerror", this.onLockError);
-    // Capture phase: HUD overlays must not swallow look / canvas engage.
-    window.addEventListener("pointermove", this.onGlobalPointerMove, true);
+    // Capture mousemove: CEF TG Desktop drops pointermove without button; mousemove is reliable.
+    window.addEventListener("mousemove", this.onGlobalPointerMove, true);
     window.addEventListener("pointerdown", this.onPointerDown, true);
     c.addEventListener("click", this.onCanvasClick);
     window.addEventListener("pointerup", this.onPointerUp);
@@ -1264,7 +1264,7 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     window.removeEventListener("resize", this.onOrient);
     document.removeEventListener("pointerlockchange", this.onLock);
     document.removeEventListener("pointerlockerror", this.onLockError);
-    window.removeEventListener("pointermove", this.onGlobalPointerMove, true);
+    window.removeEventListener("mousemove", this.onGlobalPointerMove, true);
     window.removeEventListener("pointerdown", this.onPointerDown, true);
     c.removeEventListener("click", this.onCanvasClick);
     window.removeEventListener("pointerup", this.onPointerUp);
@@ -1357,6 +1357,8 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
     this.dragging = false;
     this.moveX = 0;
     this.moveZ = 0;
+    this.lastMouseX = undefined;
+    this.lastMouseY = undefined;
     this.endPlace();
     this.endBreak();
   }
@@ -1383,7 +1385,13 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
   private applyAimCursor() {
     const c = this.opts.canvas;
     if (this.isLocked() || this.aimEngaged) {
-      c.style.cursor = "none";
+      // CEF bypass: transparent GIF keeps mouse-move events flowing (cursor:none stalls them).
+      if (isTelegramDesktopPlatform() && !this.isLocked()) {
+        c.style.cursor =
+          "url(data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==), auto";
+      } else {
+        c.style.cursor = "none";
+      }
       c.classList.add("peep-aim-cursor");
     } else {
       c.style.cursor = "";
@@ -1443,11 +1451,12 @@ if (floor(vKind + 0.1) == 99.0) discard;`,
   }
 
   /**
-   * Window capture pointermove — survives HUD overlays.
+   * Window capture mousemove — survives HUD overlays.
    * Pointer Lock uses movementX; TG Desktop bypass uses clientX delta while aimEngaged.
    */
-  private onGlobalPointerMove = (e: PointerEvent) => {
-    if (e.pointerType === "touch") return;
+  private onGlobalPointerMove = (e: MouseEvent) => {
+    // Безопасная проверка для MouseEvent:
+    if ("pointerType" in e && (e as PointerEvent).pointerType === "touch") return;
 
     // 1. СТАНДАРТНЫЙ POINTER LOCK (Если сработал)
     if (this.isLocked()) {

@@ -879,9 +879,10 @@
   }
 }
 
-/* Free-look / Pointer Lock: hide system cursor over the game canvas. */
+/* Free-look / Pointer Lock: hide system cursor over the game canvas.
+   No !important — TG Desktop CEF needs an inline 1×1 GIF cursor to keep mousemove flowing. */
 .peep-aim-cursor,
 canvas.peep-aim-cursor {
-  cursor: none !important;
+  cursor: none;
 }
 
